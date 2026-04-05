@@ -20,6 +20,7 @@ Visualization
 📝 Save results to notebook/history
 ⚙️ User settings management
 👤 Demo account & pre-seeded data
+
 🏗️ Architecture Overview
 📌 Controllers
 Home
@@ -40,19 +41,23 @@ IAiService / MockAiService
 → AI processing (mock implementation)
 ISimpleAccountStore / SimpleAccountStore
 → Lightweight demo authentication
+
 💾 Data Layer
 Database: SQLite (Data/app.db)
 ORM: Entity Framework Core
+
 📊 Entities
 Document
 ActivityEntry
 OcrResult
 AiResult
 UserSettings
+
 🖥️ Frontend
 Bootstrap 5
 PDF.js (client-side rendering)
 Vanilla JavaScript (workspace & loading states)
+
 🛠️ Technologies Used
 ASP.NET Core MVC (.NET 8)
 Entity Framework Core
@@ -61,16 +66,20 @@ Bootstrap 5
 PDF.js
 Tesseract OCR (optional)
 Poppler (pdftoppm)
+
 ⚡ Getting Started
 🔧 Prerequisites
 .NET 8 SDK installed
-▶️ Run the Project
+▶️ Run the Project:
+
 dotnet restore
 dotnet run
 
 Open in browser:
 
 https://localhost:xxxx
+
+
 🔍 Optional: Enable Real OCR (Tesseract)
 
 By default, OCR runs in mock mode.
@@ -88,10 +97,12 @@ or define paths in appsettings.json:
   "PdfToPpmPath": "C:\\path\\to\\pdftoppm.exe"
 }
 Restart the application
+
 🗄️ Database Info
 📁 DB file: Data/app.db
 📂 Upload folder: Data/uploads/
 Database initialized with EnsureCreated() at startup
+
 🧪 Demo Data
 
 Pre-seeded data includes:
@@ -104,28 +115,34 @@ password: demo123
 📝 1 notebook entry
 📊 1 activity record
 ⚙️ Default user settings
+
+settings
 🎨 UI / UX Highlights
 Shared layout (navbar & footer)
 Reusable alert component (_AppAlerts.cshtml)
 Loading states for POST actions
 Empty state UI for pages
 Clean and consistent validation feedback
+
 ⚠️ Limitations
 AI layer is mock-based
 Real OCR requires local Tesseract + Poppler installation
 Uses EnsureCreated() instead of migrations
 Simple authentication (no ASP.NET Identity)
+
 🚫 Out of Scope (This Version)
 Team collaboration features
 Admin panel
 Advanced AI provider orchestration
 Queue / background processing systems
+
 📌 Future Improvements (Optional Ideas)
 Replace mock AI with real LLM APIs
 Add ASP.NET Identity authentication
 Introduce background job processing (e.g., Hangfire)
 Support multi-user collaboration
 Improve OCR accuracy with preprocessing
+
 📄 License
 
 This project is developed for academic purposes.
