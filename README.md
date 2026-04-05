@@ -1,106 +1,131 @@
-# Creative Document Translation and Visualisation System
+🚀 Creative Document Translation and Visualization System
 
-Bitirme projesi olarak gelistirilmis ASP.NET Core MVC tabanli bir belge isleme calismasidir.
+An ASP.NET Core MVC-based document processing application developed as a graduation project.
+This project demonstrates a simple yet functional pipeline for PDF processing, OCR, and AI-based text transformations.
 
-## Graduation Project Note
+🎓 Graduation Project Note
 
-Bu depo, final-year / bitirme projesi sunumu icin sade ve anlatilabilir bir MVP olarak tasarlanmistir. Kod yapisi bilerek basit tutulmustur.
+This repository is designed as a Minimum Viable Product (MVP) for a final-year project presentation.
+The architecture and codebase are intentionally kept simple, readable, and easy to explain.
 
-## Project Purpose
+✨ Features
+📄 Upload PDF documents
+🔍 Select a region inside the PDF and extract text via OCR
+🤖 Perform AI-based operations (mock):
+Translation
+Summarization
+Rewriting
+Creative writing
+Visualization
+📝 Save results to notebook/history
+⚙️ User settings management
+👤 Demo account & pre-seeded data
+🏗️ Architecture Overview
+📌 Controllers
+Home
+Account
+Dashboard
+Documents
+Ai
+Notebook
+Settings
+⚙️ Services
+IDocumentService / DocumentService
+→ Handles document, OCR, AI results, notebook, and settings logic
+IOcrService
+MockOcrService
+TesseractCliOcrService
+→ OCR processing for selected PDF regions
+IAiService / MockAiService
+→ AI processing (mock implementation)
+ISimpleAccountStore / SimpleAccountStore
+→ Lightweight demo authentication
+💾 Data Layer
+Database: SQLite (Data/app.db)
+ORM: Entity Framework Core
+📊 Entities
+Document
+ActivityEntry
+OcrResult
+AiResult
+UserSettings
+🖥️ Frontend
+Bootstrap 5
+PDF.js (client-side rendering)
+Vanilla JavaScript (workspace & loading states)
+🛠️ Technologies Used
+ASP.NET Core MVC (.NET 8)
+Entity Framework Core
+SQLite
+Bootstrap 5
+PDF.js
+Tesseract OCR (optional)
+Poppler (pdftoppm)
+⚡ Getting Started
+🔧 Prerequisites
+.NET 8 SDK installed
+▶️ Run the Project
+dotnet restore
+dotnet run
 
-- PDF belge yukleme
-- PDF icinden kullanici tarafindan secilen bolgeden OCR metin uretimi (mock veya Tesseract CLI)
-- OCR metni uzerinde AI islemleri (mock): translate, summarize, rewrite, creative write, visualize
-- Sonuclari kaydetme, notebook/history ve ayarlar ekranlari
+Open in browser:
 
-## Current Scope
+https://localhost:xxxx
+🔍 Optional: Enable Real OCR (Tesseract)
 
-- MVC web uygulamasi (server-side render + basit JS)
-- OCR sadece PDF icindeki secili bolgede
-- AI islemleri mock servis ile
-- SQLite persistence
-- Demo hesap + demo veri
+By default, OCR runs in mock mode.
 
-## Architecture Summary
+To enable real OCR:
 
-- **Controllers**: `Home`, `Account`, `Dashboard`, `Documents`, `Ai`, `Notebook`, `Settings`
-- **Services**:
-  - `IDocumentService` / `DocumentService`: belge, OCR sonucu, AI sonucu, notebook ve settings is mantigi
-  - `IOcrService` / `MockOcrService` / `TesseractCliOcrService`: secili PDF bolgesi OCR
-  - `IAiService` / `MockAiService`: AI islem mock
-  - `ISimpleAccountStore` / `SimpleAccountStore`: demo auth store
-- **Data**: `AppDbContext` + SQLite (`Data/app.db`)
-- **Entities**: `Document`, `ActivityEntry`, `OcrResult`, `AiResult`, `UserSettings`
-- **Views**: Bootstrap tabanli, ortak layout + ortak alert partial + workspace JS
+Install Tesseract OCR (Windows)
+Install Poppler (for pdftoppm)
+Add executables to PATH
+or define paths in appsettings.json:
+"Ocr": {
+  "UseMock": false,
+  "Language": "tur+eng",
+  "TesseractPath": "C:\\path\\to\\tesseract.exe",
+  "PdfToPpmPath": "C:\\path\\to\\pdftoppm.exe"
+}
+Restart the application
+🗄️ Database Info
+📁 DB file: Data/app.db
+📂 Upload folder: Data/uploads/
+Database initialized with EnsureCreated() at startup
+🧪 Demo Data
 
-## Technologies Used
+Pre-seeded data includes:
 
-- ASP.NET Core MVC (.NET 8)
-- Entity Framework Core + SQLite
-- Bootstrap 5
-- PDF.js (client-side PDF render)
-- Vanilla JavaScript (workspace ve loading davranislari)
-- Tesseract CLI + Poppler pdftoppm (opsiyonel gercek OCR)
+👤 Demo Account
 
-## Setup Steps
+demo@university.edu
+password: demo123
+📄 1 demo PDF
+📝 1 notebook entry
+📊 1 activity record
+⚙️ Default user settings
+🎨 UI / UX Highlights
+Shared layout (navbar & footer)
+Reusable alert component (_AppAlerts.cshtml)
+Loading states for POST actions
+Empty state UI for pages
+Clean and consistent validation feedback
+⚠️ Limitations
+AI layer is mock-based
+Real OCR requires local Tesseract + Poppler installation
+Uses EnsureCreated() instead of migrations
+Simple authentication (no ASP.NET Identity)
+🚫 Out of Scope (This Version)
+Team collaboration features
+Admin panel
+Advanced AI provider orchestration
+Queue / background processing systems
+📌 Future Improvements (Optional Ideas)
+Replace mock AI with real LLM APIs
+Add ASP.NET Identity authentication
+Introduce background job processing (e.g., Hangfire)
+Support multi-user collaboration
+Improve OCR accuracy with preprocessing
+📄 License
 
-1. `.NET 8 SDK` kurulu olmalidir.
-2. Proje kokunde:
-   - `dotnet restore`
-   - `dotnet run`
-3. Tarayicida acin: `https://localhost:xxxx`
-
-### Optional: Real OCR with Tesseract
-
-Mock yerine gercek OCR kullanmak icin:
-
-1. Tesseract OCR kurun (Windows):
-   - [Tesseract at UB Mannheim](https://github.com/UB-Mannheim/tesseract/wiki)
-2. Poppler kurun (`pdftoppm` icin):
-   - [Poppler for Windows](https://github.com/oschwartz10612/poppler-windows/releases)
-3. `PATH` icine `tesseract.exe` ve `pdftoppm.exe` klasorlerini ekleyin
-   - veya `appsettings.json` icinde tam yol verin:
-     - `Ocr:TesseractPath`
-     - `Ocr:PdfToPpmPath`
-4. `appsettings.json`:
-   - `Ocr:UseMock = false`
-   - `Ocr:Language = tur+eng` (ihtiyaca gore degistirin)
-5. Uygulamayi yeniden baslatin.
-
-## Database Info
-
-- DB dosyasi: `Data/app.db`
-- Upload klasoru: `Data/uploads/`
-- Baslangicta `EnsureCreated()` + temel tablolar olusturulur.
-
-## Demo Data Info
-
-Seed verisi otomatik eklenir:
-
-- Demo hesap: `demo@university.edu` / `demo123`
-- 1 adet demo PDF kaydi
-- 1 adet kaydedilmis AI notebook girdisi
-- 1 adet activity kaydi
-- Demo user settings
-
-## UI and UX Final Polish
-
-- Ortak navbar/footer ve kart stili
-- Ortak alert gosterimi: `Views/Shared/_AppAlerts.cshtml`
-- POST formlarda loading-state: `wwwroot/js/site.js`
-- Bos durum kartlari (dashboard/documents/notebook)
-- Tutarli validation gorunumu ve sade feedback dili
-
-## Current Limitations
-
-- AI katmani mock implementasyon
-- Tesseract OCR icin makinede `tesseract` ve `pdftoppm` kurulu olmali
-- Migration yerine MVP-style startup SQL kullanimi
-- Basit auth store (Identity degil)
-
-## Out of Scope Features (Current Version)
-
-- Team collaboration
-- Enterprise admin panel
-- Gelismis provider orkestrasyonu ve queue yapilari
-
+This project is developed for academic purposes.
