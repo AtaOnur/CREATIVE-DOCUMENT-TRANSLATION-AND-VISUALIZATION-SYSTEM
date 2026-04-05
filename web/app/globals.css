@@ -1,0 +1,32 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  --background: 0 0% 100%;
+  --foreground: 222.2 84% 4.9%;
+}
+
+body {
+  background-color: hsl(var(--background));
+  color: hsl(var(--foreground));
+}
+
+/*
+ * -----------------------------------------------------------------------------
+ * [TR] Bu dosya ne işe yarar
+ * Global CSS ve Tailwind katmanlarını içirir; shadcn uyumlu basit renk değişkenleri tanımlar.
+ *
+ * [TR] Neden gerekli
+ * Tüm sayfalarda ortak tipografi ve arka plan davranışı sağlar.
+ *
+ * [TR] Sistem içinde nerede kullanılır
+ * `app/layout.tsx` bu dosyayı içe aktarır.
+ *
+ * MODIFICATION NOTES (TR)
+ * - Olası değişiklik: tam tema (dark mode), özel fontlar.
+ * - Nasıl çözülür: Shadcn tema rehberi ile CSS değişkenleri genişletilir.
+ * - Etkilenen dosyalar: Bu dosya, tailwind.config.ts, bileşenler.
+ * - Zorluk: Kolay.
+ * -----------------------------------------------------------------------------
+ */

@@ -1,0 +1,90 @@
+@using pdf_bitirme.Models
+@model pdf_bitirme.Models.ViewModels.AdminDocumentsViewModel
+@{
+    ViewData["Title"] = "Belge Yonetimi";
+}
+
+@*
+    [TR] Bu dosya ne işe yarar: Admin belge listesi, arama/filtre ve silme akışına geçiş ekranı.
+    [TR] Neden gerekli: Problemli içerikleri hızlı tespit edip kaldırmak için temel moderasyon yüzü sağlar.
+    [TR] İlgili: AdminController.Documents, AdminController.DeleteDocument
+
+    MODIFICATION NOTES (TR)
+    - Gelecekte rapor nedeni (uygunsuz içerik vb.) kolonları eklenebilir.
+    - Bulk delete veya toplu durum güncelleme eklenebilir.
+    - Bu admin yapısı bitirme projesi kapsamında bilinçli olarak basit tutulmuştur; sonra genişletilebilir.
+*@
+
+<div class="container py-4">
+    <div class="d-flex justify-content-between align-items-center mb-3">
+        <h1 class="h4 fw-bold mb-0">Belge Yonetimi</h1>
+        <a class="btn btn-outline-secondary" asp-action="Index">Admin Ana Sayfa</a>
+    </div>
+
+    <form method="get" class="card border-0 shadow-sm mb-3">
+        <div class="card-body d-flex gap-2 flex-wrap">
+            <input class="form-control" style="max-width:24rem" type="text" name="q" value="@Model.SearchQuery" placeholder="Belge adi veya kullanici ile ara..." />
+            <select class="form-select" style="max-width:14rem" name="status">
+                <option value="">Tum Durumlar</option>
+                @foreach (var status in Enum.GetValues<DocumentStatus>())
+                {
+                    if (Model.StatusFilter == status.ToString())
+                    {
+                        <option value="@status" selected>@status</option>
+                    }
+                    else
+                    {
+                        <option value="@status">@status</option>
+                    }
+                }
+            </select>
+            <button class="btn btn-accent" type="submit">Filtrele</button>
+            <a class="btn btn-outline-secondary" asp-action="Documents">Temizle</a>
+        </div>
+    </form>
+
+    <div class="card border-0 shadow-sm">
+        <div class="card-body">
+            @if (!Model.HasAny)
+            {
+                <p class="text-muted mb-0">Kriterlere uygun belge bulunamadi.</p>
+            }
+            else
+            {
+                <div class="table-responsive">
+                    <table class="table table-hover align-middle mb-0">
+                        <thead>
+                        <tr>
+                            <th>Belge Adi</th>
+                            <th>Sahip</th>
+                            <th>Yuklenme Tarihi</th>
+                            <th>Durum</th>
+                            <th>Islem</th>
+                        </tr>
+                        </thead>
+                        <tbody>
+                        @foreach (var row in Model.Documents)
+                        {
+                            <tr>
+                                <td>@row.DocumentName</td>
+                                <td>@row.OwnerEmail</td>
+                                <td>@row.UploadDateUtc.ToLocalTime().ToString("g")</td>
+                                <td><partial name="_StatusBadge" model="@row.Status" /></td>
+                                <td>
+                                    <a class="btn btn-sm btn-outline-primary me-1" asp-action="DocumentDetails" asp-route-id="@row.Id">Detay</a>
+                                    <form asp-action="DeleteDocument" method="post" class="d-inline" data-loading-form="true">
+                                        @Html.AntiForgeryToken()
+                                        <input type="hidden" name="id" value="@row.Id" />
+                                        <button type="submit" class="btn btn-sm btn-outline-danger" onclick="return confirm('Belgeyi silmek istediginize emin misiniz?');">Sil</button>
+                                    </form>
+                                </td>
+                            </tr>
+                        }
+                        </tbody>
+                    </table>
+                </div>
+            }
+        </div>
+    </div>
+</div>
+

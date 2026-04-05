@@ -1,0 +1,51 @@
+@*
+    [TR] Bu dosya ne işe yarar: Uygulama genelinde TempData mesajlarını tek bir görsel dil ile gösterir.
+    [TR] Neden gerekli: Sayfalar arasında alert/feedback tutarlılığı ve tekrar eden kodu azaltmak.
+    [TR] İlgili: _Layout.cshtml, Controller TempData mesajları
+
+    MODIFICATION NOTES (TR)
+    - Toast altyapısına geçişte bu partial tek noktadan güncellenebilir.
+    - Mesajlara kod/kimlik eklenerek i18n katmanı eklenebilir.
+    - Genel resim OCR desteği bu sürümde yer almamaktadır.
+*@
+@{
+    var successKeys = new[] { "AuthMessage", "DocumentsMessage", "NotebookMessage", "AiResultMessage", "SettingsMessage", "SuccessMessage" };
+    var errorKeys = new[] { "DocumentsError", "AuthError", "ErrorMessage" };
+    var infoKeys = new[] { "ForgotGenericMessage", "InfoMessage" };
+}
+
+<div class="container pt-3">
+    @foreach (var key in successKeys)
+    {
+        if (TempData[key] is string msg && !string.IsNullOrWhiteSpace(msg))
+        {
+            <div class="alert alert-success alert-dismissible fade show border-0 shadow-sm app-alert" role="status">
+                @msg
+                <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Kapat"></button>
+            </div>
+        }
+    }
+
+    @foreach (var key in errorKeys)
+    {
+        if (TempData[key] is string msg && !string.IsNullOrWhiteSpace(msg))
+        {
+            <div class="alert alert-danger alert-dismissible fade show border-0 shadow-sm app-alert" role="alert">
+                @msg
+                <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Kapat"></button>
+            </div>
+        }
+    }
+
+    @foreach (var key in infoKeys)
+    {
+        if (TempData[key] is string msg && !string.IsNullOrWhiteSpace(msg))
+        {
+            <div class="alert alert-info alert-dismissible fade show border-0 shadow-sm app-alert" role="status">
+                @msg
+                <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Kapat"></button>
+            </div>
+        }
+    }
+</div>
+

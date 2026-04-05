@@ -1,0 +1,323 @@
+/*
+ * [TR] Bu dosya ne işe yarar: Genel site stilleri — navbar, hero, kartlar, vurgu renkleri.
+ * [TR] Neden gerekli: Bootstrap ile birlikte bitirme sunumuna uygun modern, okunur yüzey.
+ * [TR] İlgili: Views/Shared/_Layout.cshtml, Home/Index.cshtml
+ *
+ * MODIFICATION NOTES (TR)
+ * - Kurumsal tema: CSS değişkenleri tek yerden güncellenir.
+ * - auth-page / auth-card: Giriş ve hesap formları için ayrı tema varyantı eklenebilir.
+ * - Karanlık mod: prefers-color-scheme ile isteğe bağlı uzantı.
+ * - Zorluk: Kolay.
+ */
+
+html {
+  font-size: 15px;
+  position: relative;
+  min-height: 100%;
+}
+
+@media (min-width: 768px) {
+  html {
+    font-size: 16px;
+  }
+}
+
+:root {
+  --app-primary: #0f3d4c;
+  --app-primary-mid: #156b7a;
+  --app-accent: #0d9488;
+  --app-accent-hover: #0f766e;
+  --app-hero-end: #134e5e;
+  --app-footer-bg: #f4f6f8;
+}
+
+.app-body {
+  font-family: system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+  background: #f8fafc;
+}
+
+.btn:focus,
+.btn:active:focus,
+.btn-link.nav-link:focus,
+.form-control:focus,
+.form-check-input:focus {
+  box-shadow: 0 0 0 0.1rem white, 0 0 0 0.25rem rgba(13, 148, 136, 0.35);
+}
+
+/* Üst menü */
+.app-navbar {
+  background: linear-gradient(135deg, var(--app-primary) 0%, var(--app-hero-end) 100%);
+}
+
+.app-navbar .nav-link {
+  color: rgba(255, 255, 255, 0.9) !important;
+}
+
+.app-navbar .nav-link:hover {
+  color: #fff !important;
+}
+
+/* CTA — kayıt düğmesi */
+.btn-accent {
+  background-color: var(--app-accent);
+  border-color: var(--app-accent);
+  color: #fff;
+  font-weight: 500;
+}
+
+.btn-accent:hover {
+  background-color: var(--app-accent-hover);
+  border-color: var(--app-accent-hover);
+  color: #fff;
+}
+
+.text-accent {
+  color: var(--app-accent) !important;
+}
+
+.border-accent {
+  border-color: var(--app-accent) !important;
+}
+
+/* Hero */
+.app-hero {
+  background: linear-gradient(145deg, var(--app-primary-mid) 0%, var(--app-hero-end) 55%, #0a2f38 100%);
+}
+
+.py-md-6 {
+  padding-top: 4rem !important;
+  padding-bottom: 4rem !important;
+}
+
+.app-hero-card {
+  background: rgba(255, 255, 255, 0.98);
+}
+
+.letter-spacing {
+  letter-spacing: 0.08em;
+}
+
+/* Kartlar */
+.app-card {
+  transition: transform 0.15s ease, box-shadow 0.15s ease;
+}
+
+.app-card:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 0.75rem 2rem rgba(15, 61, 76, 0.1) !important;
+}
+
+.fs-65 {
+  font-size: 1.05rem;
+}
+
+/* Alt bilgi */
+.app-footer {
+  background-color: var(--app-footer-bg);
+}
+
+.app-alert {
+  border-left: 4px solid rgba(15, 61, 76, 0.35);
+}
+
+/* CTA bant */
+.app-cta-band {
+  background: linear-gradient(180deg, #f8fafb 0%, #eef2f5 100%);
+  border: 1px solid rgba(15, 61, 76, 0.08);
+}
+
+/* Kimlik sayfaları — ferah arka plan ve kart */
+.auth-page {
+  background: linear-gradient(180deg, #eef2f5 0%, #ffffff 45%, #f8fafb 100%);
+}
+
+.auth-card {
+  border-radius: 1rem;
+  box-shadow: 0 0.35rem 1.75rem rgba(15, 61, 76, 0.09);
+  border: 1px solid rgba(15, 61, 76, 0.06);
+}
+
+.text-app-primary {
+  color: var(--app-primary);
+}
+
+.border-app {
+  border-color: rgba(15, 61, 76, 0.15) !important;
+}
+
+.border-app:focus {
+  border-color: var(--app-accent) !important;
+}
+
+.link-app {
+  color: var(--app-accent);
+  text-decoration: none;
+  font-weight: 500;
+}
+
+.link-app:hover {
+  color: var(--app-accent-hover);
+  text-decoration: underline;
+}
+
+/* Pano / belge sayfaları */
+.app-page-header {
+  background: linear-gradient(180deg, #f6f8fa 0%, #ffffff 100%);
+}
+
+.stat-card .card-body {
+  border-left: 3px solid var(--app-accent);
+}
+
+.empty-state-card {
+  border: 1px dashed rgba(15, 61, 76, 0.12) !important;
+  background: #fafbfc;
+}
+
+.validation-summary-errors ul {
+  margin-bottom: 0;
+  padding-left: 1rem;
+}
+
+.field-validation-error {
+  font-size: 0.85rem;
+}
+
+/* Yükleme — sürükle bırak */
+.upload-drop-zone {
+  border: 2px dashed rgba(15, 61, 76, 0.2);
+  background: #fafcfd;
+  cursor: pointer;
+  transition: border-color 0.15s ease, background 0.15s ease;
+}
+
+.upload-drop-zone:hover,
+.upload-drop-zone--active {
+  border-color: var(--app-accent);
+  background: rgba(13, 148, 136, 0.06);
+}
+
+/* Workspace (belge detay) */
+.workspace-shell {
+  overflow: hidden;
+}
+
+.workspace-toolbar {
+  background: #f8fafc;
+}
+
+.workspace-page-input {
+  width: 5rem;
+}
+
+.workspace-body {
+  min-height: 70vh;
+}
+
+.workspace-viewer-area {
+  background: #f2f4f7;
+}
+
+.workspace-viewer-frame {
+  position: relative;
+  max-width: 100%;
+  overflow: auto;
+  display: flex;
+  justify-content: center;
+  align-items: flex-start;
+  background: #e7eaee;
+  border-radius: 0.5rem;
+  padding: 0.25rem;
+}
+
+.workspace-pdf-canvas {
+  background: #fff;
+  box-shadow: 0 0.25rem 0.85rem rgba(15, 61, 76, 0.15);
+}
+
+.workspace-region-overlay {
+  position: absolute;
+  top: 0.25rem;
+  left: 50%;
+  transform: translateX(-50%);
+  pointer-events: none;
+}
+
+.workspace-region-overlay--active {
+  pointer-events: auto;
+  cursor: crosshair;
+}
+
+.workspace-region-rect {
+  position: absolute;
+  border: 2px solid #0d9488;
+  background: rgba(13, 148, 136, 0.15);
+  pointer-events: none;
+}
+
+.workspace-side-panel {
+  width: 100%;
+  max-width: 360px;
+  background: #ffffff;
+}
+
+.workspace-ocr-text {
+  min-height: 180px;
+  resize: vertical;
+}
+
+/* Notebook / settings */
+.notebook-card {
+  border-left: 3px solid var(--app-accent);
+}
+
+.settings-card {
+  border-top: 3px solid rgba(13, 148, 136, 0.5);
+}
+
+.admin-stat-card .card-body {
+  border-left: 3px solid rgba(13, 148, 136, 0.7);
+}
+
+.admin-badge {
+  color: #111 !important;
+  border: 1px solid rgba(0, 0, 0, 0.12);
+  font-weight: 600;
+}
+
+.admin-badge-neutral {
+  background-color: #e9ecef;
+}
+
+.admin-badge-success {
+  background-color: #cfead8;
+}
+
+.admin-badge-warning {
+  background-color: #ffe7b5;
+}
+
+.admin-badge-admin {
+  background-color: #f8d7da;
+}
+
+@media (max-width: 991px) {
+  .workspace-side-panel {
+    max-width: 100%;
+  }
+}
+
+/*
+ * -----------------------------------------------------------------------------
+ * [TR] Workspace CSS notu:
+ * - Sol tarafta viewer ve overlay; sağ panelde seçim/OCR placeholder alanları.
+ * - Sade görsel dil korunarak savunma ekran görüntülerine uygun düzen hedeflendi.
+ *
+ * MODIFICATION NOTES (TR)
+ * - Daha iyi PDF viewer için thumbnail şeridi stili eklenebilir.
+ * - Annotation araçları için renk/palette sınıfları eklenebilir.
+ * - Text overlay katmanı için ayrı z-index yönetimi gerekebilir.
+ * - Global alert ve loading-state stilleri eklendi.
+ * - Genel resimden metin çıkarma özelliği bu sürümde bulunmamaktadır; future work olarak düşünülmüştür.
+ * -----------------------------------------------------------------------------
+ */

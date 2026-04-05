@@ -1,0 +1,115 @@
+@*
+    [TR] Bu dosya ne işe yarar: PDF yükleme — sürükle-bırak alanı, max 20 MB, sunucu doğrulaması ile uyumlu.
+    [TR] Model: UploadViewModel
+    [TR] İlgili: DocumentsController.Upload
+
+    MODIFICATION NOTES (TR)
+    - Çoklu dosya input multiple + döngü.
+    - İlerleme çubuğu (XMLHttpRequest veya fetch).
+    - Bul yükleme sonrası virüs taraması (üretim).
+    - Zorluk: Orta.
+*@
+@model pdf_bitirme.Models.ViewModels.UploadViewModel
+@{
+    ViewData["Title"] = "PDF yükle";
+    var maxMb = pdf_bitirme.Models.ViewModels.DocumentUploadConstants.MaxBytes / (1024 * 1024);
+}
+
+<div class="app-page-header py-4 border-bottom border-light-subtle mb-4">
+    <div class="container">
+        <h1 class="h2 fw-bold text-app-primary mb-1">PDF yükle</h1>
+        <p class="text-muted mb-0 small">Yalnızca .pdf · en fazla @maxMb MB · başlık boş bırakılırsa dosya adı kullanılır.</p>
+    </div>
+</div>
+
+<div class="container pb-5">
+    <div class="row justify-content-center">
+        <div class="col-lg-8">
+            <div class="card border-0 shadow-sm">
+                <div class="card-body p-4 p-md-5">
+                    <form asp-action="Upload" method="post" enctype="multipart/form-data" id="upload-form" novalidate data-loading-form="true">
+                        <div asp-validation-summary="ModelOnly" class="text-danger small mb-3"></div>
+
+                        <div class="mb-4">
+                            <label asp-for="Title" class="form-label fw-medium"></label>
+                            <input asp-for="Title" class="form-control form-control-lg border-app" placeholder="Örn. Tez Bölüm 2" />
+                            <span asp-validation-for="Title" class="text-danger small d-block"></span>
+                        </div>
+
+                        <label class="form-label fw-medium">Dosya</label>
+                        <div class="upload-drop-zone rounded-4 p-5 text-center mb-2" id="drop-zone" data-max-mb="@maxMb">
+                            <input asp-for="File" type="file" accept=".pdf,application/pdf" class="d-none" id="file-input" />
+                            <div class="mb-2 text-muted" id="drop-hint">PDF’yi buraya sürükleyin veya</div>
+                            <button type="button" class="btn btn-outline-secondary" id="pick-file">Dosya seç</button>
+                            <div class="small text-muted mt-3 mb-0" id="file-name"></div>
+                        </div>
+                        <div class="small text-danger mb-2 d-none" id="upload-client-error"></div>
+                        <span asp-validation-for="File" class="text-danger small d-block mb-4"></span>
+
+                        <button type="submit" class="btn btn-accent btn-lg w-100">Yükle</button>
+                    </form>
+                    <p class="small text-muted mt-3 mb-0 text-center">
+                        <a asp-action="Index" class="link-app">← Belgeler listesine dön</a>
+                    </p>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+@section Scripts {
+    <partial name="_ValidationScriptsPartial" />
+    <script>
+        (function () {
+            var zone = document.getElementById('drop-zone');
+            var input = document.getElementById('file-input');
+            var pick = document.getElementById('pick-file');
+            var nameEl = document.getElementById('file-name');
+            var clientError = document.getElementById('upload-client-error');
+            var maxMb = parseInt(zone.dataset.maxMb || '20', 10);
+            function showName(f) {
+                if (!f) { nameEl.textContent = ''; return; }
+                var mb = (f.size / (1024 * 1024)).toFixed(2);
+                nameEl.textContent = f.name + ' (' + mb + ' MB)';
+            }
+            function showClientError(message) {
+                if (!clientError) return;
+                if (!message) {
+                    clientError.classList.add('d-none');
+                    clientError.textContent = '';
+                    return;
+                }
+                clientError.textContent = message;
+                clientError.classList.remove('d-none');
+            }
+            function setFileList(file) {
+                if (!file) { input.value = ''; showName(null); return; }
+                showClientError('');
+                if (file.size > maxMb * 1024 * 1024) {
+                    showClientError('Dosya ' + maxMb + ' MB sınırını aşıyor.');
+                    return;
+                }
+                if (!file.name.toLowerCase().endsWith('.pdf')) {
+                    showClientError('Yalnızca PDF dosyası seçebilirsiniz.');
+                    return;
+                }
+                var dt = new DataTransfer();
+                dt.items.add(file);
+                input.files = dt.files;
+                showName(file);
+            }
+            pick.addEventListener('click', function () { input.click(); });
+            input.addEventListener('change', function () {
+                if (input.files && input.files[0]) setFileList(input.files[0]);
+            });
+            zone.addEventListener('dragover', function (e) { e.preventDefault(); zone.classList.add('upload-drop-zone--active'); });
+            zone.addEventListener('dragleave', function () { zone.classList.remove('upload-drop-zone--active'); });
+            zone.addEventListener('drop', function (e) {
+                e.preventDefault();
+                zone.classList.remove('upload-drop-zone--active');
+                var f = e.dataTransfer.files && e.dataTransfer.files[0];
+                if (f) setFileList(f);
+            });
+        })();
+    </script>
+}

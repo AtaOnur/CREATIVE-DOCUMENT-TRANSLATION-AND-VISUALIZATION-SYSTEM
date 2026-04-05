@@ -1,0 +1,112 @@
+@model pdf_bitirme.Models.ViewModels.AdminDashboardViewModel
+@{
+    ViewData["Title"] = "Admin Panel";
+}
+
+@*
+    [TR] Bu dosya ne işe yarar: Admin panel ana ekranı; sistem toplamları ve hızlı erişim bağlantıları.
+    [TR] Neden gerekli: Sunumda yönetim yetkilerini tek ekrandan net göstermek için.
+    [TR] İlgili: AdminController.Index
+
+    MODIFICATION NOTES (TR)
+    - Kartlara haftalık trend grafikleri eklenebilir.
+    - Kritik alarm kartları (hata oranı, başarısız OCR) eklenebilir.
+    - Bu admin yapısı bitirme projesi kapsamında bilinçli olarak basit tutulmuştur; sonra genişletilebilir.
+*@
+
+<div class="container py-4">
+    <div class="d-flex justify-content-between align-items-center mb-3">
+        <div>
+            <h1 class="h4 fw-bold mb-1">Admin Dashboard</h1>
+            <p class="text-muted mb-0">Temel sistem istatistikleri ve yönetim kısayolları.</p>
+        </div>
+    </div>
+
+    <div class="row g-3 mb-4">
+        <div class="col-sm-6 col-lg-3">
+            <div class="card border-0 shadow-sm h-100 admin-stat-card">
+                <div class="card-body">
+                    <div class="small text-muted">Toplam Kullanici</div>
+                    <div class="display-6 fw-semibold">@Model.TotalUsers</div>
+                </div>
+            </div>
+        </div>
+        <div class="col-sm-6 col-lg-3">
+            <div class="card border-0 shadow-sm h-100 admin-stat-card">
+                <div class="card-body">
+                    <div class="small text-muted">Toplam Belge</div>
+                    <div class="display-6 fw-semibold">@Model.TotalDocuments</div>
+                </div>
+            </div>
+        </div>
+        <div class="col-sm-6 col-lg-3">
+            <div class="card border-0 shadow-sm h-100 admin-stat-card">
+                <div class="card-body">
+                    <div class="small text-muted">OCR Sonucu</div>
+                    <div class="display-6 fw-semibold">@Model.TotalOcrResults</div>
+                </div>
+            </div>
+        </div>
+        <div class="col-sm-6 col-lg-3">
+            <div class="card border-0 shadow-sm h-100 admin-stat-card">
+                <div class="card-body">
+                    <div class="small text-muted">AI Sonucu</div>
+                    <div class="display-6 fw-semibold">@Model.TotalAiResults</div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="row g-3">
+        <div class="col-lg-4">
+            <div class="card border-0 shadow-sm h-100">
+                <div class="card-body">
+                    <h2 class="h6 fw-bold">Hizli Baglantilar</h2>
+                    <div class="d-grid gap-2 mt-3">
+                        <a class="btn btn-outline-primary" asp-action="Users">Kullanici Yonetimi</a>
+                        <a class="btn btn-outline-primary" asp-action="Documents">Belge Yonetimi</a>
+                        <a class="btn btn-outline-primary" asp-action="Logs">Kullanim Loglari</a>
+                    </div>
+                </div>
+            </div>
+        </div>
+        <div class="col-lg-8">
+            <div class="card border-0 shadow-sm h-100">
+                <div class="card-body">
+                    <h2 class="h6 fw-bold">Son Aktivite Ozeti</h2>
+                    @if (Model.RecentLogs.Count == 0)
+                    {
+                        <p class="text-muted mb-0">Henüz aktivite kaydı bulunmuyor.</p>
+                    }
+                    else
+                    {
+                        <div class="table-responsive">
+                            <table class="table table-sm align-middle mb-0">
+                                <thead>
+                                <tr>
+                                    <th>Tarih</th>
+                                    <th>Tip</th>
+                                    <th>Kullanici</th>
+                                    <th>Aciklama</th>
+                                </tr>
+                                </thead>
+                                <tbody>
+                                @foreach (var row in Model.RecentLogs)
+                                {
+                                    <tr>
+                                        <td>@row.DateUtc.ToLocalTime().ToString("g")</td>
+                                        <td><span class="badge admin-badge admin-badge-neutral">@row.ActionType</span></td>
+                                        <td>@row.UserEmail</td>
+                                        <td>@row.Description</td>
+                                    </tr>
+                                }
+                                </tbody>
+                            </table>
+                        </div>
+                    }
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+

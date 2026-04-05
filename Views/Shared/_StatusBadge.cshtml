@@ -1,0 +1,22 @@
+@*
+    [TR] Bu dosya ne işe yarar: Belge durumu için renkli rozet — tablo ve kartlarda ortak kullanım.
+    [TR] Model: pdf_bitirme.Models.DocumentStatus (enum)
+
+    MODIFICATION NOTES (TR)
+    - İkon + yüzde ilerleme ile değiştirilebilir.
+    - Zorluk: Kolay.
+*@
+@model pdf_bitirme.Models.DocumentStatus
+@{
+    var (css, label) = Model switch
+    {
+        pdf_bitirme.Models.DocumentStatus.UPLOADED => ("bg-secondary", "Yüklendi"),
+        pdf_bitirme.Models.DocumentStatus.PROCESSING => ("bg-info text-dark", "İşleniyor"),
+        pdf_bitirme.Models.DocumentStatus.OCR_READY => ("bg-primary", "OCR Hazır"),
+        pdf_bitirme.Models.DocumentStatus.AI_READY => ("bg-warning text-dark", "AI Hazır"),
+        pdf_bitirme.Models.DocumentStatus.COMPLETED => ("bg-success", "Tamamlandı"),
+        pdf_bitirme.Models.DocumentStatus.FAILED => ("bg-danger", "Hata"),
+        _ => ("bg-light text-dark", Model.ToString()),
+    };
+}
+<span class="badge rounded-pill @css">@label</span>

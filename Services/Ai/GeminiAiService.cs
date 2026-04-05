@@ -1,0 +1,375 @@
+using System.Net.Http.Json;
+using System.Text.Json;
+using System.Text.Json.Serialization;
+using Microsoft.Extensions.Options;
+using pdf_bitirme.Models.ViewModels;
+
+namespace pdf_bitirme.Services.Ai;
+
+/*
+ * [TR] Bu dosya ne işe yarar:
+ *      Google Gemini REST API'sini kullanarak metin işleme (çeviri, özetleme vb.) ve
+ *      görsel üretimi (gemini-...-image-generation modeli) yapar.
+ *
+ * [TR] Neden gerekli:
+ *      IAiService arayüzünü gerçek Gemini API ile doldurur; mock servisi ile bire bir
+ *      değiştirilebilir (bkz. Program.cs, Ai:Provider ayarı).
+ *
+ * [TR] Görsel üretim akışı (Visualize operasyonu):
+ *      1. appsettings Ai:Gemini:ImageModel kontrol edilir.
+ *      2. responseModalities:["IMAGE"] ile Gemini'ye istek gönderilir.
+ *      3. Gelen base64 PNG, wwwroot/ai-images/ klasörüne kaydedilir.
+ *      4. /ai-images/<guid>.png URL'i AiServiceResult.OutputImageUrl olarak döner.
+ *      Fallback: ImageModel boşsa eski davranış (metin prompt) devreye girer.
+ *
+ * MODIFICATION NOTES (TR)
+ * - Safety settings (HarmBlockThreshold) içerik politikası için eklenebilir.
+ * - Streaming (Server-Sent Events) daha hızlı UX için ileride eklenebilir.
+ * - Imagen API (ayrı endpoint) daha yüksek kalite görsel üretimi için eklenebilir.
+ * - Genel image-to-text bu modülün kapsamında değildir.
+ * - Zorluk: Orta.
+ */
+public class GeminiAiService : IAiService
+{
+    private readonly HttpClient _http;
+    private readonly GeminiAiOptions _options;
+    private readonly IWebHostEnvironment _env;
+    private readonly ILogger<GeminiAiService> _logger;
+
+    // ── İstek JSON tipleri ────────────────────────────────────────────────────
+    // [TR] Gemini API camelCase bekler; [JsonPropertyName] zorunlu.
+
+    private sealed class GeminiTextRequest
+    {
+        [JsonPropertyName("contents")] public List<GeminiContent> Contents { get; init; } = [];
+        [JsonPropertyName("generationConfig")] public GeminiTextConfig GenerationConfig { get; init; } = new();
+    }
+
+    private sealed class GeminiImageRequest
+    {
+        [JsonPropertyName("contents")] public List<GeminiContent> Contents { get; init; } = [];
+        [JsonPropertyName("generationConfig")] public GeminiImageConfig GenerationConfig { get; init; } = new();
+    }
+
+    private sealed class GeminiTextConfig
+    {
+        [JsonPropertyName("maxOutputTokens")] public int MaxOutputTokens { get; init; }
+        [JsonPropertyName("temperature")] public float Temperature { get; init; }
+    }
+
+    private sealed class GeminiImageConfig
+    {
+        // [TR] responseModalities: IMAGE → Gemini görsel üretir (base64 PNG döner).
+        [JsonPropertyName("responseModalities")]
+        public List<string> ResponseModalities { get; init; } = ["IMAGE"];
+    }
+
+    private sealed class GeminiContent
+    {
+        [JsonPropertyName("role")] public string Role { get; init; } = "user";
+        [JsonPropertyName("parts")] public List<GeminiPart> Parts { get; init; } = [];
+    }
+
+    private sealed class GeminiPart
+    {
+        // [TR] Metin parçaları için text, görsel parçalar için inlineData dolu olur.
+        [JsonPropertyName("text")]
+        [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+        public string? Text { get; init; }
+
+        [JsonPropertyName("inlineData")]
+        [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+        public GeminiInlineData? InlineData { get; init; }
+    }
+
+    private sealed class GeminiInlineData
+    {
+        [JsonPropertyName("mimeType")] public string MimeType { get; init; } = "image/png";
+        // [TR] base64 kodlanmış görsel verisi.
+        [JsonPropertyName("data")] public string Data { get; init; } = string.Empty;
+    }
+
+    // ── Yanıt JSON tipleri ────────────────────────────────────────────────────
+
+    private sealed class GeminiResponse
+    {
+        [JsonPropertyName("candidates")] public List<GeminiCandidate>? Candidates { get; init; }
+        [JsonPropertyName("promptFeedback")] public GeminiPromptFeedback? PromptFeedback { get; init; }
+    }
+
+    private sealed class GeminiCandidate
+    {
+        [JsonPropertyName("content")] public GeminiContent? Content { get; init; }
+        [JsonPropertyName("finishReason")] public string? FinishReason { get; init; }
+    }
+
+    private sealed class GeminiPromptFeedback
+    {
+        [JsonPropertyName("blockReason")] public string? BlockReason { get; init; }
+    }
+
+    // ─────────────────────────────────────────────────────────────────────────
+
+    public GeminiAiService(
+        HttpClient http,
+        IOptions<GeminiAiOptions> options,
+        IWebHostEnvironment env,
+        ILogger<GeminiAiService> logger)
+    {
+        _http = http;
+        _options = options.Value;
+        _env = env;
+        _logger = logger;
+    }
+
+    public async Task<AiServiceResult> ProcessAsync(
+        string documentTitle,
+        AiProcessRequestViewModel request,
+        CancellationToken cancellationToken = default)
+    {
+        // [TR] "Visualize" operasyonu ve ImageModel tanımlıysa görsel üretim yoluna gir.
+        if (request.OperationType == "Visualize" && !string.IsNullOrWhiteSpace(_options.ImageModel))
+        {
+            return await GenerateImageAsync(documentTitle, request, cancellationToken);
+        }
+
+        return await GenerateTextAsync(documentTitle, request, cancellationToken);
+    }
+
+    // ── Metin üretimi ─────────────────────────────────────────────────────────
+
+    private async Task<AiServiceResult> GenerateTextAsync(
+        string documentTitle,
+        AiProcessRequestViewModel request,
+        CancellationToken cancellationToken)
+    {
+        var model = string.IsNullOrWhiteSpace(request.ModelName)
+            ? _options.DefaultModel
+            : request.ModelName;
+
+        var prompt = BuildTextPrompt(documentTitle, request);
+        var url = BuildUrl(model);
+
+        var body = new GeminiTextRequest
+        {
+            Contents = [new GeminiContent { Role = "user", Parts = [new GeminiPart { Text = prompt }] }],
+            GenerationConfig = new GeminiTextConfig
+            {
+                MaxOutputTokens = _options.MaxOutputTokens,
+                Temperature = _options.Temperature,
+            }
+        };
+
+        _logger.LogInformation("Gemini metin isteği. Model: {Model}, Op: {Op}", model, request.OperationType);
+
+        var response = await SendAsync(url, body, cancellationToken);
+        var geminiResp = await ReadResponseAsync(response, cancellationToken);
+
+        var text = geminiResp?.Candidates?.FirstOrDefault()?.Content?.Parts?.FirstOrDefault()?.Text;
+        if (string.IsNullOrWhiteSpace(text))
+            throw new InvalidOperationException("Gemini geçerli bir metin yanıtı döndürmedi.");
+
+        return new AiServiceResult { OutputText = text.Trim() };
+    }
+
+    // ── Görsel üretimi ────────────────────────────────────────────────────────
+
+    private async Task<AiServiceResult> GenerateImageAsync(
+        string documentTitle,
+        AiProcessRequestViewModel request,
+        CancellationToken cancellationToken)
+    {
+        var imageModel = _options.ImageModel;
+        var url = BuildUrl(imageModel);
+
+        var prompt = BuildImagePrompt(documentTitle, request);
+
+        var body = new GeminiImageRequest
+        {
+            Contents = [new GeminiContent { Role = "user", Parts = [new GeminiPart { Text = prompt }] }],
+            GenerationConfig = new GeminiImageConfig { ResponseModalities = ["IMAGE"] }
+        };
+
+        _logger.LogInformation("Gemini görsel isteği. Model: {Model}", imageModel);
+
+        var response = await SendAsync(url, body, cancellationToken);
+        var geminiResp = await ReadResponseAsync(response, cancellationToken);
+
+        // [TR] Yanıt içindeki tüm part'ları tara; inlineData (görsel) ve text parçalarını ayır.
+        var parts = geminiResp?.Candidates?.FirstOrDefault()?.Content?.Parts;
+        if (parts == null || parts.Count == 0)
+            throw new InvalidOperationException("Gemini görsel yanıtı boş geldi.");
+
+        // [TR] Görsel parça bul (inlineData dolu olan).
+        var imagePart = parts.FirstOrDefault(p => p.InlineData != null);
+        if (imagePart?.InlineData == null)
+        {
+            // [TR] Görsel gelmedi; metin kısmı varsa onu döndür (prompt açıklaması).
+            var fallbackText = parts.FirstOrDefault(p => !string.IsNullOrWhiteSpace(p.Text))?.Text ?? "";
+            return new AiServiceResult
+            {
+                OutputText = $"[Görsel üretilemedi — Model metin yanıtı döndürdü]\n\n{fallbackText}".Trim()
+            };
+        }
+
+        // [TR] Base64 görsel verisini wwwroot/ai-images/ klasörüne PNG olarak kaydet.
+        var imageUrl = await SaveBase64ImageAsync(imagePart.InlineData, cancellationToken);
+
+        // [TR] Metin parçası varsa (açıklama) onu da döndür.
+        var caption = parts.FirstOrDefault(p => !string.IsNullOrWhiteSpace(p.Text))?.Text ?? string.Empty;
+
+        return new AiServiceResult
+        {
+            OutputText = string.IsNullOrWhiteSpace(caption) ? "Görsel başarıyla üretildi." : caption.Trim(),
+            OutputImageUrl = imageUrl
+        };
+    }
+
+    // ── Yardımcı metodlar ─────────────────────────────────────────────────────
+
+    private string BuildUrl(string model) =>
+        $"{_options.BaseUrl.TrimEnd('/')}/{model}:generateContent?key={_options.ApiKey}";
+
+    private async Task<HttpResponseMessage> SendAsync<T>(string url, T body, CancellationToken ct)
+    {
+        HttpResponseMessage response;
+        try
+        {
+            response = await _http.PostAsJsonAsync(url, body, ct);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Gemini API bağlantı hatası.");
+            throw new InvalidOperationException(
+                "Gemini API'ye ulaşılamadı. İnternet bağlantısını ve API anahtarını kontrol edin.", ex);
+        }
+
+        if (!response.IsSuccessStatusCode)
+        {
+            var errorBody = await response.Content.ReadAsStringAsync(ct);
+            _logger.LogError("Gemini API hata yanıtı: {Status} | {Body}", response.StatusCode, errorBody);
+            throw new InvalidOperationException(
+                $"Gemini API hatası ({(int)response.StatusCode}): {TryParseGeminiError(errorBody)}");
+        }
+
+        return response;
+    }
+
+    private static async Task<GeminiResponse?> ReadResponseAsync(HttpResponseMessage response, CancellationToken ct)
+    {
+        var geminiResp = await response.Content.ReadFromJsonAsync<GeminiResponse>(cancellationToken: ct);
+
+        if (geminiResp?.PromptFeedback?.BlockReason != null)
+            throw new InvalidOperationException(
+                $"Gemini içerik politikası engeli: {geminiResp.PromptFeedback.BlockReason}");
+
+        return geminiResp;
+    }
+
+    /// <summary>
+    /// [TR] Base64 görsel verisini disk'e kaydeder ve göreli URL döner.
+    /// wwwroot/ai-images/{guid}.{ext} klasörüne yazılır.
+    /// </summary>
+    private async Task<string> SaveBase64ImageAsync(GeminiInlineData inlineData, CancellationToken ct)
+    {
+        var ext = inlineData.MimeType.Contains("jpeg") ? "jpg" : "png";
+        var fileName = $"{Guid.NewGuid():N}.{ext}";
+
+        var saveDir = Path.Combine(_env.WebRootPath, "ai-images");
+        Directory.CreateDirectory(saveDir);
+
+        var filePath = Path.Combine(saveDir, fileName);
+        var bytes = Convert.FromBase64String(inlineData.Data);
+        await File.WriteAllBytesAsync(filePath, bytes, ct);
+
+        _logger.LogInformation("AI görseli kaydedildi: {File}", filePath);
+        return $"/ai-images/{fileName}";
+    }
+
+    // ── Prompt oluşturucular ──────────────────────────────────────────────────
+
+    /// <summary>[TR] Metin işleme operasyonları için prompt oluşturur.</summary>
+    private static string BuildTextPrompt(string documentTitle, AiProcessRequestViewModel req)
+    {
+        var text  = req.InputText?.Trim() ?? string.Empty;
+        var style = req.Style?.Trim() ?? "Formal";
+        var instr = req.CustomInstruction?.Trim() ?? string.Empty;
+        var tgt   = req.TargetLanguage ?? "Turkish";
+
+        return req.OperationType switch
+        {
+            "Translate" =>
+                $"""
+                Sen profesyonel bir çeviri asistanısın. Aşağıdaki metni {tgt} diline çevir.
+                Çeviri stili: {style} (Formal = resmi, Academic = akademik, Simplified = sade).
+                Sadece çevrilmiş metni yaz, açıklama ekleme.
+
+                Kaynak metin (Belge: {documentTitle}):
+                {text}
+                """,
+
+            "Summarize" =>
+                $"""
+                Aşağıdaki metni ana noktaları koruyarak özetle. Özet kısa, net ve anlaşılır olmalıdır.
+                Sadece özeti yaz, ek açıklama ekleme.
+
+                Kaynak metin (Belge: {documentTitle}):
+                {text}
+                """,
+
+            "Rewrite" =>
+                $"""
+                Aşağıdaki metni şu talimata göre yeniden yaz: "{instr}"
+                Talimat yoksa metni daha akıcı ve anlaşılır hale getir.
+                Sadece yeniden yazılmış metni yaz.
+
+                Orijinal metin (Belge: {documentTitle}):
+                {text}
+                """,
+
+            "CreativeWrite" =>
+                $"""
+                Aşağıdaki metinden ilham alarak {style} tarzında yaratıcı bir metin yaz.
+                Özgün ve akıcı bir dille yaz. Sadece yaratıcı metni yaz.
+
+                İlham kaynağı (Belge: {documentTitle}):
+                {text}
+                """,
+
+            _ => $"Aşağıdaki metni işle:\n\n{text}"
+        };
+    }
+
+    /// <summary>
+    /// [TR] Görsel üretim için kısa ve etkili İngilizce prompt oluşturur.
+    /// Gemini görsel modelleri kısa, İngilizce prompt'larla daha iyi sonuç verir.
+    /// </summary>
+    private static string BuildImagePrompt(string documentTitle, AiProcessRequestViewModel req)
+    {
+        var text = req.InputText?.Trim() ?? string.Empty;
+        // [TR] Maksimum 500 karakter — görsel model uzun metin işlemez.
+        var excerpt = text.Length > 500 ? text[..500] + "..." : text;
+
+        return $"""
+            Create a vivid, detailed illustration inspired by the following text excerpt.
+            Style: photorealistic or detailed digital art. Include relevant objects, scenery, and atmosphere.
+            Source document: {documentTitle}
+
+            Text:
+            {excerpt}
+            """;
+    }
+
+    private static string TryParseGeminiError(string body)
+    {
+        try
+        {
+            using var doc = JsonDocument.Parse(body);
+            if (doc.RootElement.TryGetProperty("error", out var err) &&
+                err.TryGetProperty("message", out var msg))
+                return msg.GetString() ?? body;
+        }
+        catch { /* ignore */ }
+        return body.Length > 300 ? body[..300] + "..." : body;
+    }
+}

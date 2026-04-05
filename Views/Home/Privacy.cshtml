@@ -1,0 +1,25 @@
+@*
+    [TR] Bu dosya ne işe yarar: Gizlilik / yasal bilgi için yer tutucu sayfa; varsayılan tek cümlelik şablonun yerini alır.
+    [TR] Neden gerekli: Menü ve alt bilgi bağlantısı savunma ve gerçek dağıtım için anlamlı içerik sunmalı.
+    [TR] İlgili: _Layout.cshtml alt bilgi “Gizlilik” linki.
+
+    MODIFICATION NOTES (TR)
+    - Üniversite/KVKK metni: hukuk birimi onaylı metin eklenecek.
+    - Çerez politikası: ayrı bölüm veya sayfa.
+    - Zorluk: Kolay.
+*@
+@{
+    ViewData["Title"] = "Gizlilik";
+}
+
+<div class="container py-5">
+    <h1 class="h2 fw-bold mb-4">Gizlilik ve veri kullanımı</h1>
+    <p class="text-muted">
+        Bu sayfa, <strong>Creative Document Translation and Visualisation System</strong> bitirme projesi kapsamında
+        geliştirilen uygulama için gizlilik bildirimi yer tutucusudur. Kişisel verilerin işlenmesi, saklama süreleri ve
+        kullanıcı hakları; projenin ilerleyen aşamalarında üniversite gereksinimleri ve ilgili mevzuata uygun şekilde güncellenecektir.
+    </p>
+    <p class="text-muted mb-0">
+        OCR kapsamı yalnızca kullanıcının PDF üzerinde seçtiği bölge ile sınırlıdır; bağımsız görüntüden metin çıkarma özelliği bu sürümde yer almaz (future work).
+    </p>
+</div>

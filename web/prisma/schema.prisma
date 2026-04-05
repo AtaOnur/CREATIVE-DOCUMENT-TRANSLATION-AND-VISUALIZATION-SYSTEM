@@ -1,0 +1,159 @@
+// Prisma schema — Creative Document Translation and Visualisation System
+// Microsoft SQL Server (MSSQL). Prisma SQL Server bağlayıcısı yerel enum/Json desteklemez;
+// durum alanları String tutulur (uygulama + Zod ile doğrulanır). OCR: yalnızca PDF bölgesi.
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlserver"
+  url      = env("DATABASE_URL")
+}
+
+// --- Modeller (Document.status: UPLOADED|PROCESSING|OCR_READY|AI_READY|COMPLETED|FAILED) ---
+
+model User {
+  id        String   @id @default(cuid())
+  email     String   @unique
+  name      String?
+  /// USER | ADMIN
+  role      String   @default("USER")
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  preferences     UserPreference?
+  documents       Document[]
+  notebookEntries NotebookEntry[]
+  auditLogs       AuditLog[]
+}
+
+model UserPreference {
+  id     String @id @default(cuid())
+  userId String @unique
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  /// NEUTRAL | FORMAL | CREATIVE | ACADEMIC
+  defaultStyle      String  @default("NEUTRAL")
+  preferredLanguage String? @default("tr")
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+model Document {
+  id     String @id @default(cuid())
+  userId String
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  title       String
+  fileName    String?
+  storagePath String?
+  mimeType    String? @default("application/pdf")
+
+  /// UPLOADED | PROCESSING | OCR_READY | AI_READY | COMPLETED | FAILED
+  status String @default("UPLOADED")
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  regions         RegionSelection[]
+  aiResults       AiResult[]
+  notebookEntries NotebookEntry[]
+}
+
+/// PDF sayfasında kullanıcı seçimi; koordinatlar normalize (0–1).
+model RegionSelection {
+  id         String   @id @default(cuid())
+  documentId String
+  document   Document @relation(fields: [documentId], references: [id], onDelete: Cascade)
+
+  pageNumber Int
+  xNorm      Float
+  yNorm      Float
+  widthNorm  Float
+  heightNorm Float
+  label      String?
+
+  createdAt DateTime @default(now())
+
+  ocrResults OcrResult[]
+}
+
+/// Yalnızca PDF bölgesi OCR çıktısı; genel görüntü OCR kapsam dışı.
+model OcrResult {
+  id                String          @id @default(cuid())
+  regionSelectionId String
+  regionSelection   RegionSelection @relation(fields: [regionSelectionId], references: [id], onDelete: Cascade)
+
+  extractedText String  @db.NVarChar(Max)
+  confidence    Float?
+  engineVersion String?
+
+  createdAt DateTime @default(now())
+
+  aiResults AiResult[]
+}
+
+model AiResult {
+  id         String @id @default(cuid())
+  documentId String
+  /// SQL Server: Çoklu cascade yolu kırılır (Document silinmeden önce satırlar silinmeli veya sıra uygulanmalı).
+  document   Document @relation(fields: [documentId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+
+  ocrResultId String?
+  ocrResult   OcrResult? @relation(fields: [ocrResultId], references: [id], onDelete: SetNull)
+
+  /// TRANSLATE | SUMMARIZE | CREATIVE_WRITE | REWRITE | VISUALIZE
+  operationType String
+
+  /// NEUTRAL | FORMAL | CREATIVE | ACADEMIC
+  styleType String?
+
+  /// PENDING | COMPLETED | FAILED
+  status String @default("PENDING")
+
+  inputSnapshot String? @db.NVarChar(Max)
+  outputText    String? @db.NVarChar(Max)
+  /// JSON metin olarak (Prisma Json tipi SQL Server’da yok)
+  outputMeta   String? @db.NVarChar(Max)
+  errorMessage String?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+model NotebookEntry {
+  id     String @id @default(cuid())
+  userId String
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  documentId String?
+  /// Çoklu cascade yolu kırılır: User silinirken doğrudan notebook temizlenir.
+  document   Document? @relation(fields: [documentId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+
+  title String
+  body  String @db.NVarChar(Max)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+model AuditLog {
+  id     String @id @default(cuid())
+  userId String?
+  user   User?   @relation(fields: [userId], references: [id], onDelete: SetNull)
+
+  action     String
+  entityType String
+  entityId   String?
+  /// JSON metin olarak
+  metadata String? @db.NVarChar(Max)
+
+  createdAt DateTime @default(now())
+}
+
+// [TR] Bu dosya: SQL Server tabloları ve ilişkiler Prisma ile tanımlıdır.
+// [TR] Enum'lar: Prisma şemasında String; izin verilen değerler uygulama/Zod'da (lib/types/enums.ts).
+// [TR] JSON alanlar: NVarChar(Max) içinde JSON string.
+// MODIFICATION NOTES (TR): Alan ekle -> migrate; seed ve servisleri güncelle. Zorluk: orta.

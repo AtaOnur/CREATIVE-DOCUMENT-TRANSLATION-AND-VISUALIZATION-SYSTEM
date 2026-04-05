@@ -1,0 +1,142 @@
+@*
+    [TR] Bu dosya ne işe yarar: Genel karşılama sayfası — proje tanıtımı, özellik kartları, gelecek çalışmalar notu.
+    [TR] Neden gerekli: Savunmada sistemin kapsamını tek ekranda özetler; varsayılan MVC şablonunun yerini alır.
+    [TR] İlgili: _Layout.cshtml (menü ve CTA bağlantıları tutarlı olmalı).
+
+    MODIFICATION NOTES (TR)
+    - Giriş yapan kullanıcıya /App veya pano yönlendirmesi eklenebilir.
+    - İstatistik veya demo video alanı savunma için genişletilebilir.
+    - OCR yalnızca PDF üzerinde seçilen bölge ile sınırlıdır; genel görüntü OCR aşağıda future work olarak belirtilmiştir.
+    - Zorluk: Kolay.
+*@
+@{
+    ViewData["Title"] = "Ana Sayfa";
+}
+
+<section class="app-hero text-white">
+    <div class="container py-5 py-md-6">
+        <div class="row align-items-center g-4">
+            <div class="col-lg-7">
+                <p class="text-uppercase small fw-semibold opacity-75 letter-spacing mb-2">Bitirme Projesi</p>
+                <h1 class="display-5 fw-bold mb-3">Creative Document Translation and Visualisation System</h1>
+                <p class="lead opacity-90 mb-4">
+                    Akademik ve profesyonel PDF belgelerinizi yükleyin; sayfa üzerinde <strong>bölge seçerek</strong> metin çıkarın,
+                    çevirin, özetleyin ve görselleştirin — tek bir tutarlı mimari altında.
+                </p>
+                <div class="d-flex flex-wrap gap-2">
+                    <a class="btn btn-light btn-lg px-4" asp-controller="Account" asp-action="Login">Giriş Yap</a>
+                    <a class="btn btn-outline-light btn-lg px-4" asp-controller="Account" asp-action="Register">Hesap Oluştur</a>
+                </div>
+            </div>
+            <div class="col-lg-5">
+                <div class="app-hero-card rounded-4 p-4 text-dark shadow">
+                    <h2 class="h5 fw-semibold mb-3">Bu sistem ne sunar?</h2>
+                    <ul class="list-unstyled mb-0 small lh-lg">
+                        <li class="mb-2"><span class="text-accent me-2">&#10003;</span> PDF yükleme ve sayfa düzeyinde çalışma alanı</li>
+                        <li class="mb-2"><span class="text-accent me-2">&#10003;</span> Dikdörtgen bölge seçimi ve koordinat saklama</li>
+                        <li class="mb-2"><span class="text-accent me-2">&#10003;</span> <strong>Yalnızca seçilen PDF bölgesi</strong> üzerinden OCR</li>
+                        <li class="mb-2"><span class="text-accent me-2">&#10003;</span> Çeviri, özetleme, yeniden yazım (rewrite)</li>
+                        <li class="mb-2"><span class="text-accent me-2">&#10003;</span> Metin görselleştirme ve not defteri / geçmiş</li>
+                        <li><span class="text-accent me-2">&#10003;</span> İleride genişletilebilir servis ve sağlayıcı katmanı</li>
+                    </ul>
+                </div>
+            </div>
+        </div>
+    </div>
+</section>
+
+<div class="container py-5">
+    <section class="mb-5">
+        <h2 class="h3 fw-bold mb-3">Proje açıklaması</h2>
+        <p class="text-muted lead fs-65 mb-0">
+            Amaç; kullanıcıların PDF belge içinden <em>anlamlı parçaları</em> işaretleyerek iş akışını kontrol etmesidir.
+            OCR motoru yalnızca bu seçimle sınırlı çalışacak şekilde tasarlanır; böylece gürültü azalır ve akademik kullanım için uygun bir deneyim hedeflenir.
+            Çeviri, özet ve yeniden yazım adımları çıkarılan metin üzerinden ilerleyecek; sonuçlar görselleştirilebilir ve not defterinde saklanabilir.
+        </p>
+    </section>
+
+    <section class="mb-5">
+        <h2 class="h3 fw-bold mb-4 text-center">Özellikler</h2>
+        <div class="row g-4">
+            <div class="col-md-6 col-lg-4">
+                <div class="card app-card h-100 border-0 shadow-sm">
+                    <div class="card-body">
+                        <h3 class="h6 fw-semibold">PDF yükleme</h3>
+                        <p class="small text-muted mb-0">Belgeler sisteme aktarılır; ileride sayfa ve meta bilgi yönetimi eklenebilir.</p>
+                    </div>
+                </div>
+            </div>
+            <div class="col-md-6 col-lg-4">
+                <div class="card app-card h-100 border-0 shadow-sm">
+                    <div class="card-body">
+                        <h3 class="h6 fw-semibold">Bölge seçimi</h3>
+                        <p class="small text-muted mb-0">Kullanıcı sayfa üzerinde dikdörtgen bölge işaretler; normalize koordinatlar kaydedilir.</p>
+                    </div>
+                </div>
+            </div>
+            <div class="col-md-6 col-lg-4">
+                <div class="card app-card h-100 border-0 shadow-sm border-start border-accent border-3">
+                    <div class="card-body">
+                        <h3 class="h6 fw-semibold">OCR (PDF bölgesi)</h3>
+                        <p class="small text-muted mb-0">Metin çıkarma <strong>sadece</strong> seçilen PDF alanı için tanımlıdır; bağımsız görüntü yükleme yoktur.</p>
+                    </div>
+                </div>
+            </div>
+            <div class="col-md-6 col-lg-4">
+                <div class="card app-card h-100 border-0 shadow-sm">
+                    <div class="card-body">
+                        <h3 class="h6 fw-semibold">Çeviri ve özet</h3>
+                        <p class="small text-muted mb-0">OCR veya düzeltilmiş metin üzerinden çok dilli çeviri ve özet üretimi hedeflenir.</p>
+                    </div>
+                </div>
+            </div>
+            <div class="col-md-6 col-lg-4">
+                <div class="card app-card h-100 border-0 shadow-sm">
+                    <div class="card-body">
+                        <h3 class="h6 fw-semibold">Yeniden yazım (rewrite)</h3>
+                        <p class="small text-muted mb-0">Üslup ve hedef kitleye göre metin yeniden ifade etme modülü planlanmaktadır.</p>
+                    </div>
+                </div>
+            </div>
+            <div class="col-md-6 col-lg-4">
+                <div class="card app-card h-100 border-0 shadow-sm">
+                    <div class="card-body">
+                        <h3 class="h6 fw-semibold">Görselleştirme ve not defteri</h3>
+                        <p class="small text-muted mb-0">Metin analizi çıktıları grafik veya yapılandırılabilir görünümlerle desteklenir; geçmiş tutulur.</p>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <section class="mb-5">
+        <h2 class="h3 fw-bold mb-3">Mimari yaklaşım</h2>
+        <p class="text-muted mb-3">
+            Uygulama katmanları sade tutulur: web arayüzü (ASP.NET Core MVC), iş kuralları servisleri, harici OCR/AI sağlayıcıları için ince bağlantı noktaları.
+            Böylece Tesseract, bulut API veya farklı çeviri motorları sonradan değiştirilmeden veya yan yana çalıştırılabilir.
+        </p>
+        <div class="rounded-3 bg-light border p-4 small font-monospace text-secondary mb-0">
+            Sunum → İş mantığı → Belge/OCR arabirimi → Metin işleme (çeviri/özet/rewrite) → Görselleştirme & not defteri
+        </div>
+    </section>
+
+    <section class="mb-4">
+        <div class="alert alert-secondary border-0 rounded-3 shadow-sm d-flex flex-column flex-md-row align-items-md-center gap-3" role="note">
+            <div class="fs-4 text-secondary" aria-hidden="true">&#9432;</div>
+            <div>
+                <strong>Kapsam dışı (future work).</strong>
+                Genel görüntüden metin üretimi (rastgele fotoğraf veya bağımsız görüntü OCR) <em>bu sürümde yer almaz</em> ve gelecek çalışma olarak değerlendirilir.
+                Sistem, <strong>yalnızca PDF içinde kullanıcı tarafından seçilen bölge</strong> üzerinden OCR odaklıdır.
+            </div>
+        </div>
+    </section>
+
+    <section class="text-center py-4 rounded-4 app-cta-band">
+        <h2 class="h4 fw-bold mb-2">Projeye başlamak için</h2>
+        <p class="text-muted mb-3">Dashboard ve belge işlem ekranları sonraki geliştirme adımlarında eklenecektir.</p>
+        <div class="d-flex flex-wrap justify-content-center gap-2">
+            <a class="btn btn-accent btn-lg px-4" asp-controller="Account" asp-action="Login">Giriş</a>
+            <a class="btn btn-outline-secondary btn-lg px-4" asp-controller="Account" asp-action="Register">Kayıt Ol</a>
+        </div>
+    </section>
+</div>

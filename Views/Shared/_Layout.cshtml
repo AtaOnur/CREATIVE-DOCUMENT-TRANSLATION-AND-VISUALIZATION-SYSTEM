@@ -1,0 +1,115 @@
+@*
+    [TR] Bu dosya ne işe yarar: Tüm Razor sayfalarının ortak iskeleti — üst menü, oturum durumuna göre Giriş/Çıkış.
+    [TR] Neden gerekli: Tutarlı sunum; kimlikli kullanıcıda e-posta ve güvenli Çıkış (POST).
+    [TR] İlgili: site.css, AccountController.Logout
+
+    MODIFICATION NOTES (TR)
+    - Rol tabanlı menü öğeleri: User.IsInRole("Admin") ile.
+    - Avatar veya profil bağlantısı.
+    - Ortak alert/feedback gösterimi _AppAlerts partial üzerinden birleştirildi.
+    - Genel görüntü OCR kapsam dışı; sadece PDF bölgesi odaklı mimari (gelecek modüller).
+    - Zorluk: Kolay–orta.
+*@
+<!DOCTYPE html>
+<html lang="tr">
+<head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="description" content="Creative Document Translation and Visualisation — PDF tabanlı belge işleme sistemi (bitirme projesi)." />
+    <title>@ViewData["Title"] — CreativeDoc</title>
+    <link rel="stylesheet" href="~/lib/bootstrap/dist/css/bootstrap.min.css" />
+    <link rel="stylesheet" href="~/css/site.css" asp-append-version="true" />
+    <link rel="stylesheet" href="~/pdf_bitirme.styles.css" asp-append-version="true" />
+</head>
+<body class="d-flex flex-column min-vh-100 app-body">
+    <header>
+        <nav class="navbar navbar-expand-md navbar-dark border-bottom shadow-sm app-navbar">
+            <div class="container">
+                <a class="navbar-brand fw-semibold" asp-controller="Home" asp-action="Index" title="Ana sayfa">
+                    CreativeDoc
+                </a>
+                <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#mainNav"
+                        aria-controls="mainNav" aria-expanded="false" aria-label="Menüyü aç/kapat">
+                    <span class="navbar-toggler-icon"></span>
+                </button>
+                <div class="collapse navbar-collapse" id="mainNav">
+                    <ul class="navbar-nav ms-auto align-items-md-center gap-md-2">
+                        <li class="nav-item">
+                            <a class="nav-link" asp-controller="Home" asp-action="Index">Ana Sayfa</a>
+                        </li>
+                        @if (User.Identity?.IsAuthenticated ?? false)
+                        {
+                            <li class="nav-item">
+                                <a class="nav-link" asp-controller="Dashboard" asp-action="Index">Pano</a>
+                            </li>
+                            <li class="nav-item">
+                                <a class="nav-link" asp-controller="Documents" asp-action="Index">Belgeler</a>
+                            </li>
+                            <li class="nav-item">
+                                <a class="nav-link" asp-controller="Documents" asp-action="Upload">Yükle</a>
+                            </li>
+                            <li class="nav-item">
+                                <a class="nav-link" asp-controller="Notebook" asp-action="Index">Not Defteri</a>
+                            </li>
+                            <li class="nav-item">
+                                <a class="nav-link" asp-controller="Settings" asp-action="Index">Ayarlar</a>
+                            </li>
+                            @if (User.IsInRole("Admin"))
+                            {
+                                <li class="nav-item">
+                                    <a class="nav-link" asp-controller="Admin" asp-action="Index">Admin</a>
+                                </li>
+                            }
+                        }
+                        <li class="nav-item">
+                            <a class="nav-link" asp-controller="Home" asp-action="Privacy">Gizlilik</a>
+                        </li>
+                        @if (User.Identity?.IsAuthenticated ?? false)
+                        {
+                            <li class="nav-item d-flex align-items-center flex-wrap gap-2 pt-2 pt-md-0">
+                                <span class="text-white-50 small text-truncate" style="max-width:12rem" title="@User.Identity!.Name">@User.Identity.Name</span>
+                                <form asp-controller="Account" asp-action="Logout" method="post" class="m-0 d-inline" data-loading-form="true">
+                                    <button type="submit" class="btn btn-outline-light btn-sm px-3">Çıkış</button>
+                                </form>
+                            </li>
+                        }
+                        else
+                        {
+                            <li class="nav-item pt-2 pt-md-0">
+                                <a class="btn btn-outline-light btn-sm px-3" asp-controller="Account" asp-action="Login">Giriş</a>
+                            </li>
+                            <li class="nav-item pt-2 pt-md-0">
+                                <a class="btn btn-accent btn-sm px-3" asp-controller="Account" asp-action="Register">Kayıt Ol</a>
+                            </li>
+                        }
+                    </ul>
+                </div>
+            </div>
+        </nav>
+    </header>
+
+    <main role="main" class="flex-grow-1">
+        <partial name="_AppAlerts" />
+        @RenderBody()
+    </main>
+
+    <footer class="app-footer mt-auto border-top py-4">
+        <div class="container small text-center text-md-start">
+            <div class="row align-items-center g-2">
+                <div class="col-md-8">
+                    <strong>Creative Document Translation and Visualisation System</strong> — bitirme projesi kapsamında geliştirilmektedir.
+                </div>
+                <div class="col-md-4 text-md-end text-muted">
+                    &copy; @DateTime.UtcNow.Year
+                    — <a asp-controller="Home" asp-action="Privacy" class="link-secondary">Gizlilik</a>
+                </div>
+            </div>
+        </div>
+    </footer>
+
+    <script src="~/lib/jquery/dist/jquery.min.js"></script>
+    <script src="~/lib/bootstrap/dist/js/bootstrap.bundle.min.js"></script>
+    <script src="~/js/site.js" asp-append-version="true"></script>
+    @await RenderSectionAsync("Scripts", required: false)
+</body>
+</html>

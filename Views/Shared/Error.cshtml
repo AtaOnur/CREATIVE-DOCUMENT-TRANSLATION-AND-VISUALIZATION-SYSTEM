@@ -1,0 +1,37 @@
+@*
+    [TR] Bu dosya ne işe yarar: Uygulama genel hata ekranı.
+    [TR] Neden gerekli: Kullanıcıya sade, güvenli ve markaya uyumlu hata geri bildirimi verir.
+    [TR] İlgili: HomeController.Error, Program.cs UseExceptionHandler
+
+    MODIFICATION NOTES (TR)
+    - Hata koduna göre farklı kullanıcı mesajları eklenebilir.
+    - Log referans ID'si ile merkezi izleme ekranına link verilebilir.
+    - Genel resim OCR desteği bu sürümde yer almamaktadır.
+*@
+@model ErrorViewModel
+@{
+    ViewData["Title"] = "Hata";
+}
+
+<div class="container py-5">
+    <div class="card border-0 shadow-sm">
+        <div class="card-body p-4 p-md-5">
+            <h1 class="h4 fw-bold text-danger mb-2">Bir hata olustu</h1>
+            <p class="text-muted mb-3">
+                Isteginiz islenirken beklenmeyen bir sorun olustu. Lutfen tekrar deneyin.
+            </p>
+
+            @if (Model.ShowRequestId)
+            {
+                <p class="small mb-3">
+                    <strong>Request ID:</strong> <code>@Model.RequestId</code>
+                </p>
+            }
+
+            <div class="d-flex gap-2 flex-wrap">
+                <a asp-controller="Home" asp-action="Index" class="btn btn-accent">Ana sayfaya don</a>
+                <a asp-controller="Dashboard" asp-action="Index" class="btn btn-outline-secondary">Panoya don</a>
+            </div>
+        </div>
+    </div>
+</div>

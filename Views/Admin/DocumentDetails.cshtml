@@ -1,0 +1,70 @@
+@model pdf_bitirme.Models.ViewModels.AdminDocumentDetailsViewModel
+@{
+    ViewData["Title"] = "Belge Detayi";
+}
+
+@*
+    [TR] Bu dosya ne işe yarar: Belgenin sahibi, durum, boyut ve OCR/AI üretim sayılarını gösterir.
+    [TR] Neden gerekli: Adminin problemli içeriği silmeden önce hızlı inceleme yapabilmesini sağlar.
+    [TR] İlgili: AdminController.DocumentDetails
+
+    MODIFICATION NOTES (TR)
+    - Belge içeriği mini önizleme (ilk sayfa) eklenebilir.
+    - Moderasyon gerekçesi metni ve işlem geçmişi eklenebilir.
+    - Bu admin yapısı bitirme projesi kapsamında bilinçli olarak basit tutulmuştur; sonra genişletilebilir.
+*@
+
+<div class="container py-4">
+    <div class="d-flex justify-content-between align-items-center mb-3">
+        <h1 class="h4 fw-bold mb-0">Belge Detayi</h1>
+        <a class="btn btn-outline-secondary" asp-action="Documents">Listeye Don</a>
+    </div>
+
+    <div class="card border-0 shadow-sm mb-3">
+        <div class="card-body">
+            <div class="row g-3">
+                <div class="col-md-6">
+                    <div class="small text-muted">Belge Adi</div>
+                    <div class="fw-semibold">@Model.DocumentName</div>
+                </div>
+                <div class="col-md-6">
+                    <div class="small text-muted">Sahip</div>
+                    <div class="fw-semibold">@Model.OwnerEmail</div>
+                </div>
+                <div class="col-md-4">
+                    <div class="small text-muted">Durum</div>
+                    <partial name="_StatusBadge" model="@Model.Status" />
+                </div>
+                <div class="col-md-4">
+                    <div class="small text-muted">Boyut</div>
+                    <div>@(Math.Round(Model.SizeBytes / 1024.0, 2)) KB</div>
+                </div>
+                <div class="col-md-4">
+                    <div class="small text-muted">Guncelleme</div>
+                    <div>@Model.UpdatedAtUtc.ToLocalTime().ToString("g")</div>
+                </div>
+                <div class="col-md-4">
+                    <div class="small text-muted">Upload Tarihi</div>
+                    <div>@Model.CreatedAtUtc.ToLocalTime().ToString("g")</div>
+                </div>
+                <div class="col-md-4">
+                    <div class="small text-muted">OCR Kaydi</div>
+                    <div>@Model.OcrCount</div>
+                </div>
+                <div class="col-md-4">
+                    <div class="small text-muted">AI Kaydi</div>
+                    <div>@Model.AiCount</div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <form asp-action="DeleteDocument" method="post" data-loading-form="true">
+        @Html.AntiForgeryToken()
+        <input type="hidden" name="id" value="@Model.Id" />
+        <button class="btn btn-danger" type="submit" onclick="return confirm('Bu belgeyi tamamen silmek istediginize emin misiniz?');">
+            Problemli Belgeyi Sil
+        </button>
+    </form>
+</div>
+

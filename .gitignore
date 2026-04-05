@@ -1,0 +1,9 @@
+# [TR] Yerel veritabanı ve yüklenen PDF'ler — depoya girmemeli.
+Data/*.db
+Data/*.db-shm
+Data/*.db-wal
+Data/uploads/
+
+bin/
+obj/
+.vs/

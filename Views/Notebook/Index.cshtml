@@ -1,0 +1,125 @@
+@model pdf_bitirme.Models.ViewModels.NotebookIndexViewModel
+@{
+    ViewData["Title"] = "Not Defteri / Gecmis";
+}
+
+@*
+    [TR] Bu dosya ne ise yarar: Kaydedilen AI sonuclarini listeleyen notebook/history sayfasi.
+    [TR] Neden gerekli: Kullanici gecmis AI calismalarini bulup hizli inceleyebilsin.
+    [TR] Ilgili: NotebookController.Index
+
+    MODIFICATION NOTES (TR)
+    - Klasor, etiket ve favori filtreleri sonra eklenebilir.
+    - Notebook disa aktarma (PDF/Markdown) sonra eklenebilir.
+    - Isbirligi/collaboration future work.
+    - Genel resim OCR destegi bu surumde yer almamaktadir.
+*@
+
+<div class="app-page-header py-3 border-bottom border-light-subtle mb-3">
+    <div class="container d-flex flex-wrap justify-content-between align-items-center gap-2">
+        <div>
+            <h1 class="h4 fw-bold text-app-primary mb-1">Not Defteri / Kaydedilen AI Calismalari</h1>
+            <p class="text-muted small mb-0">Kaydedilen AI ciktilarini arayin, filtreleyin ve yonetin.</p>
+        </div>
+    </div>
+</div>
+
+<div class="container pb-4">
+    <form method="get" class="card border-0 shadow-sm p-3 mb-3">
+        <div class="row g-2 align-items-end">
+            <div class="col-md-7">
+                <label class="form-label small mb-1">Ara</label>
+                <input class="form-control" name="q" value="@Model.SearchQuery" placeholder="baslik, dokuman, not, icerik..." />
+            </div>
+            <div class="col-md-3">
+                <label class="form-label small mb-1">Islem</label>
+                <select class="form-select" name="operation">
+                    <option value="">Tumu</option>
+                    @if (Model.OperationFilter == "Translate")
+                    {
+                        <option value="Translate" selected>Translate</option>
+                    }
+                    else
+                    {
+                        <option value="Translate">Translate</option>
+                    }
+                    @if (Model.OperationFilter == "Summarize")
+                    {
+                        <option value="Summarize" selected>Summarize</option>
+                    }
+                    else
+                    {
+                        <option value="Summarize">Summarize</option>
+                    }
+                    @if (Model.OperationFilter == "Rewrite")
+                    {
+                        <option value="Rewrite" selected>Rewrite</option>
+                    }
+                    else
+                    {
+                        <option value="Rewrite">Rewrite</option>
+                    }
+                    @if (Model.OperationFilter == "CreativeWrite")
+                    {
+                        <option value="CreativeWrite" selected>Creative Write</option>
+                    }
+                    else
+                    {
+                        <option value="CreativeWrite">Creative Write</option>
+                    }
+                    @if (Model.OperationFilter == "Visualize")
+                    {
+                        <option value="Visualize" selected>Visualize</option>
+                    }
+                    else
+                    {
+                        <option value="Visualize">Visualize</option>
+                    }
+                </select>
+            </div>
+            <div class="col-md-2 d-grid">
+                <button class="btn btn-accent" type="submit">Filtrele</button>
+            </div>
+        </div>
+    </form>
+
+    @if (!Model.HasAny)
+    {
+        <div class="card empty-state-card border-0 p-4 text-center">
+            <h2 class="h6 mb-2">Kayitli AI sonucu bulunamadi</h2>
+            <p class="text-muted small mb-0">AI sonucunu once Result sayfasindan Save ederek notebook'a ekleyin.</p>
+        </div>
+    }
+    else
+    {
+        <div class="row g-3">
+            @foreach (var item in Model.Items)
+            {
+                <div class="col-12">
+                    <article class="card border-0 shadow-sm notebook-card">
+                        <div class="card-body">
+                            <div class="d-flex flex-wrap justify-content-between gap-2">
+                                <div>
+                                    <h3 class="h6 mb-1">@item.Title</h3>
+                                    <div class="small text-muted">@item.SourceDocument · Sayfa @item.PageNumber · @item.OperationType · @item.Style</div>
+                                </div>
+                                <div class="small text-muted">@item.CreatedAtUtc.ToLocalTime().ToString("g")</div>
+                            </div>
+                            <p class="small mt-2 mb-3">@item.PreviewContent</p>
+                            <div class="d-flex flex-wrap gap-2">
+                                <a class="btn btn-outline-primary btn-sm" asp-action="Details" asp-route-id="@item.AiResultId">Goruntule</a>
+                                <a class="btn btn-outline-secondary btn-sm" asp-action="Edit" asp-route-id="@item.AiResultId">Notu Duzenle</a>
+                                <form asp-action="Delete" method="post" data-loading-form="true">
+                                    @Html.AntiForgeryToken()
+                                    <input type="hidden" name="id" value="@item.AiResultId" />
+                                    <button class="btn btn-outline-danger btn-sm" type="submit">Sil</button>
+                                </form>
+                            </div>
+                        </div>
+                    </article>
+                </div>
+            }
+        </div>
+    }
+</div>
+

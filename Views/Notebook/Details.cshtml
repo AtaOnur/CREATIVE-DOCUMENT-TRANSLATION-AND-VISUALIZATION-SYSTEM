@@ -1,0 +1,53 @@
+@model pdf_bitirme.Models.ViewModels.AiResultPageViewModel
+@{
+    ViewData["Title"] = "Not Defteri Detayi";
+}
+
+@*
+    [TR] Bu dosya ne ise yarar: Kaydedilen notebook girdisinin detay gorunumu.
+    [TR] Neden gerekli: Islem tipi/model/stil ve ciktiyi tek ekranda gostermek.
+    [TR] Ilgili: NotebookController.Details
+
+    MODIFICATION NOTES (TR)
+    - Gelecekte onceki surumlerle karsilastirma alani eklenebilir.
+    - Favori/etiket rozeti eklenebilir.
+    - Genel resim OCR destegi bu surumde yer almamaktadir.
+*@
+
+<div class="container py-4">
+    <div class="d-flex justify-content-between align-items-center mb-3">
+        <h1 class="h4 fw-bold mb-0">Not Defteri Kayit Detayi</h1>
+        <a class="btn btn-outline-secondary btn-sm" asp-action="Index">Not Defterine Don</a>
+    </div>
+
+    <div class="card border-0 shadow-sm">
+        <div class="card-body">
+            <div class="row g-3 small">
+                <div class="col-md-4"><strong>Islem:</strong> @Model.OperationType</div>
+                <div class="col-md-4"><strong>Model:</strong> @Model.ModelName</div>
+                <div class="col-md-4"><strong>Stil:</strong> @Model.Style</div>
+                <div class="col-md-6"><strong>Belge:</strong> @Model.DocumentTitle</div>
+                <div class="col-md-3"><strong>Kaynak Sayfa:</strong> @Model.SourcePageNumber</div>
+                <div class="col-md-3"><strong>Kayit Durumu:</strong> @(Model.IsSaved ? "Kayitli" : "Gecici")</div>
+                <div class="col-12"><strong>Yonerge:</strong> @(string.IsNullOrWhiteSpace(Model.CustomInstruction) ? "-" : Model.CustomInstruction)</div>
+            </div>
+            <hr />
+            <h2 class="h6 fw-bold">Cikti</h2>
+            <div class="border rounded p-2 bg-light-subtle small mb-3" style="white-space: pre-wrap;">@Model.OutputText</div>
+            @if (!string.IsNullOrWhiteSpace(Model.OutputImageUrl))
+            {
+                <img src="@Model.OutputImageUrl" alt="Notebook visual output" class="img-fluid rounded border mb-3" />
+            }
+            <div class="d-flex flex-wrap gap-2">
+                <a class="btn btn-outline-primary btn-sm" asp-action="Edit" asp-route-id="@Model.AiResultId">Notu Duzenle</a>
+                <a class="btn btn-outline-secondary btn-sm" asp-controller="Documents" asp-action="Details" asp-route-id="@Model.DocumentId">Belgeye Don</a>
+                <form asp-action="Delete" method="post" data-loading-form="true">
+                    @Html.AntiForgeryToken()
+                    <input type="hidden" name="id" value="@Model.AiResultId" />
+                    <button type="submit" class="btn btn-outline-danger btn-sm">Sil</button>
+                </form>
+            </div>
+        </div>
+    </div>
+</div>
+

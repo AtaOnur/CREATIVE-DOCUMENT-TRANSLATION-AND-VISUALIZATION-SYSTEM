@@ -1,0 +1,52 @@
+@model pdf_bitirme.Models.ViewModels.NotebookEditViewModel
+@{
+    ViewData["Title"] = "Edit Notebook Entry";
+}
+
+@*
+    [TR] Bu dosya ne ise yarar: Notebook kaydinin baslik ve kisa not alanini duzenler.
+    [TR] Neden gerekli: Kullanici AI sonucunu kendi notlariyla daha anlamli saklayabilsin.
+    [TR] Ilgili: NotebookController.Edit
+
+    MODIFICATION NOTES (TR)
+    - Etiketler/favoriler ve klasor secimi eklenebilir.
+    - Collaboration notlari future work olarak dusunulmustur.
+    - Genel resim OCR destegi bu surumde yer almamaktadir.
+*@
+
+<div class="container py-4">
+    <div class="d-flex justify-content-between align-items-center mb-3">
+        <h1 class="h4 fw-bold mb-0">Edit Notebook Entry</h1>
+        <a class="btn btn-outline-secondary btn-sm" asp-action="Details" asp-route-id="@Model.AiResultId">Back</a>
+    </div>
+
+    <div class="card border-0 shadow-sm">
+        <div class="card-body">
+            <div class="small text-muted mb-3">@Model.SourceDocument · @Model.OperationType</div>
+            <form asp-action="Edit" method="post" data-loading-form="true">
+                @Html.AntiForgeryToken()
+                <input type="hidden" asp-for="AiResultId" />
+                <input type="hidden" asp-for="DocumentId" />
+                <input type="hidden" asp-for="SourceDocument" />
+                <input type="hidden" asp-for="OperationType" />
+
+                <div class="mb-3">
+                    <label asp-for="NoteTitle" class="form-label"></label>
+                    <input asp-for="NoteTitle" class="form-control" />
+                    <span asp-validation-for="NoteTitle" class="text-danger small"></span>
+                </div>
+                <div class="mb-3">
+                    <label asp-for="UserNote" class="form-label">Short User Note</label>
+                    <textarea asp-for="UserNote" rows="5" class="form-control"></textarea>
+                    <span asp-validation-for="UserNote" class="text-danger small"></span>
+                </div>
+                <button class="btn btn-accent" type="submit">Save Changes</button>
+            </form>
+        </div>
+    </div>
+</div>
+
+@section Scripts {
+    <partial name="_ValidationScriptsPartial" />
+}
+

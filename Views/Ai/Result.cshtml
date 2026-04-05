@@ -1,0 +1,71 @@
+@model pdf_bitirme.Models.ViewModels.AiResultPageViewModel
+@{
+    ViewData["Title"] = "AI Sonucu";
+}
+
+@*
+    [TR] Bu dosya ne işe yarar: AI işlem sonucunu detaylı gösterir ve Save/Regenerate aksiyonlarını sunar.
+    [TR] Neden gerekli: Savunmada işlem parametrelerini ve sonucu ayrı sayfada net göstermek için.
+    [TR] İlgili: AiController.Result, AiController.Save, AiController.Regenerate
+
+    MODIFICATION NOTES (TR)
+    - Yan yana karşılaştırma (önceki/sonraki çıktı) bölümü eklenebilir.
+    - Akademik citation mode ve kalite puanı etiketleri eklenebilir.
+    - Visualize çıktısı için overlay export seçenekleri eklenebilir.
+    - Genel image-to-text işlemi bu modülün kapsamında değildir.
+*@
+
+<div class="container py-4">
+    <div class="d-flex justify-content-between align-items-center mb-3">
+        <h1 class="h4 fw-bold mb-0">AI Sonuc Detayi</h1>
+        <a class="btn btn-outline-secondary btn-sm" asp-controller="Documents" asp-action="Details" asp-route-id="@Model.DocumentId">Belgeye Don</a>
+    </div>
+
+    <div class="card border-0 shadow-sm">
+        <div class="card-body">
+            <div class="row g-3 small">
+                <div class="col-md-4"><strong>Islem:</strong> @Model.OperationType</div>
+                <div class="col-md-4"><strong>Model:</strong> @Model.ModelName</div>
+                <div class="col-md-4"><strong>Stil:</strong> @Model.Style</div>
+                <div class="col-md-6"><strong>Kaynak Dil:</strong> @Model.SourceLanguage</div>
+                <div class="col-md-6"><strong>Hedef Dil:</strong> @Model.TargetLanguage</div>
+                <div class="col-md-6"><strong>Kaynak Sayfa:</strong> @Model.SourcePageNumber</div>
+                <div class="col-12"><strong>Yonerge:</strong> @(string.IsNullOrWhiteSpace(Model.CustomInstruction) ? "-" : Model.CustomInstruction)</div>
+            </div>
+
+            <hr />
+
+            <h2 class="h6 fw-bold">Girdi Metni</h2>
+            <div class="border rounded p-2 bg-light-subtle small mb-3" style="white-space: pre-wrap;">@Model.InputText</div>
+
+            <h2 class="h6 fw-bold">Cikti</h2>
+            @if (!string.IsNullOrWhiteSpace(Model.OutputText))
+            {
+                <div class="border rounded p-2 bg-light-subtle small mb-3" style="white-space: pre-wrap;">@Model.OutputText</div>
+            }
+            @if (!string.IsNullOrWhiteSpace(Model.OutputImageUrl))
+            {
+                <div class="mb-3">
+                    <img src="@Model.OutputImageUrl" alt="Visualize output" class="img-fluid rounded border" />
+                </div>
+            }
+
+            <div class="d-flex flex-wrap gap-2">
+                <form asp-action="Save" method="post" data-loading-form="true">
+                    @Html.AntiForgeryToken()
+                    <input type="hidden" name="id" value="@Model.AiResultId" />
+                    <button type="submit" class="btn btn-success btn-sm" @(Model.IsSaved ? "disabled" : "")>Kaydet</button>
+                </form>
+
+                <form asp-action="Regenerate" method="post" data-loading-form="true">
+                    @Html.AntiForgeryToken()
+                    <input type="hidden" name="id" value="@Model.AiResultId" />
+                    <button type="submit" class="btn btn-outline-primary btn-sm">Yeniden Uret</button>
+                </form>
+
+                <a class="btn btn-outline-secondary btn-sm" asp-controller="Documents" asp-action="Details" asp-route-id="@Model.DocumentId">Belgeye Don</a>
+            </div>
+        </div>
+    </div>
+</div>
+

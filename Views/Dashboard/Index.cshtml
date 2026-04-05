@@ -1,0 +1,170 @@
+@*
+    [TR] Bu dosya ne işe yarar: Pano — karşılama, özet kartları, son belgeler, aktivite, boş durum.
+    [TR] Model: DashboardViewModel
+    [TR] İlgili: DashboardController
+
+    MODIFICATION NOTES (TR)
+    - Grafik bileşenleri (Chart.js) ile yükleme trendi.
+    - Hızlı eylem: son belgeyi aç / yükle.
+    - Zorluk: Kolay.
+*@
+@model pdf_bitirme.Models.ViewModels.DashboardViewModel
+@{
+    ViewData["Title"] = "Pano";
+}
+
+<div class="app-page-header py-4 border-bottom border-light-subtle mb-4">
+    <div class="container">
+        <h1 class="h2 fw-bold text-app-primary mb-1">Pano</h1>
+        <p class="text-muted mb-0">Hoş geldiniz, <strong>@Model.UserEmail</strong>. Belgelerinizin özeti aşağıdadır.</p>
+    </div>
+</div>
+
+<div class="container pb-5">
+    <div class="row g-3 mb-4">
+        <div class="col-6 col-lg-2">
+            <div class="card border-0 shadow-sm h-100 stat-card">
+                <div class="card-body py-3">
+                    <div class="text-muted small">Toplam</div>
+                    <div class="fs-4 fw-bold text-app-primary">@Model.Stats.Total</div>
+                </div>
+            </div>
+        </div>
+        <div class="col-6 col-lg-2">
+            <div class="card border-0 shadow-sm h-100 stat-card">
+                <div class="card-body py-3">
+                    <div class="text-muted small">Yüklendi</div>
+                    <div class="fs-5 fw-semibold">@Model.Stats.Uploaded</div>
+                </div>
+            </div>
+        </div>
+        <div class="col-6 col-lg-2">
+            <div class="card border-0 shadow-sm h-100 stat-card">
+                <div class="card-body py-3">
+                    <div class="text-muted small">İşleniyor</div>
+                    <div class="fs-5 fw-semibold">@Model.Stats.Processing</div>
+                </div>
+            </div>
+        </div>
+        <div class="col-6 col-lg-2">
+            <div class="card border-0 shadow-sm h-100 stat-card">
+                <div class="card-body py-3">
+                    <div class="text-muted small">OCR hazır</div>
+                    <div class="fs-5 fw-semibold">@Model.Stats.OcrReady</div>
+                </div>
+            </div>
+        </div>
+        <div class="col-6 col-lg-2">
+            <div class="card border-0 shadow-sm h-100 stat-card">
+                <div class="card-body py-3">
+                    <div class="text-muted small">Tamamlandı</div>
+                    <div class="fs-5 fw-semibold text-success">@Model.Stats.Completed</div>
+                </div>
+            </div>
+        </div>
+        <div class="col-6 col-lg-2">
+            <div class="card border-0 shadow-sm h-100 stat-card">
+                <div class="card-body py-3">
+                    <div class="text-muted small">Hata</div>
+                    <div class="fs-5 fw-semibold text-danger">@Model.Stats.Failed</div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    @if (!Model.HasAnyDocuments)
+    {
+        <div class="card border-0 shadow-sm empty-state-card text-center py-5 px-3 mb-4">
+            <div class="display-6 text-muted mb-3" aria-hidden="true">📄</div>
+            <h2 class="h5 fw-bold">Henüz belge yok</h2>
+            <p class="text-muted mx-auto mb-4" style="max-width:28rem">İlk PDF belgenizi yükleyerek başlayın. Dosyalar güvenli şekilde sunucuda saklanır; OCR ve çeviri adımları ileride bu kayıtlar üzerinden çalışacaktır.</p>
+            <a class="btn btn-accent btn-lg px-4" asp-controller="Documents" asp-action="Upload">PDF yükle</a>
+        </div>
+    }
+    else
+    {
+        <div class="row g-4">
+            <div class="col-lg-6">
+                <div class="card border-0 shadow-sm h-100">
+                    <div class="card-header bg-white border-0 pt-3 pb-0 d-flex justify-content-between align-items-center">
+                        <h2 class="h6 fw-bold mb-0">Son belgeler</h2>
+                        <a asp-controller="Documents" asp-action="Index" class="small link-app">Tümünü gör</a>
+                    </div>
+                    <ul class="list-group list-group-flush">
+                        @foreach (var d in Model.RecentDocuments)
+                        {
+                            <li class="list-group-item d-flex justify-content-between align-items-center gap-2">
+                                <div class="text-truncate">
+                                    <a asp-controller="Documents" asp-action="Details" asp-route-id="@d.Id" class="fw-medium link-app text-decoration-none">@d.Title</a>
+                                    <div class="small text-muted text-truncate">@d.FileName · @FileSizeFormatter.Format(d.SizeBytes)</div>
+                                </div>
+                                @{ await Html.RenderPartialAsync("_StatusBadge", d.Status); }
+                            </li>
+                        }
+                    </ul>
+                </div>
+            </div>
+            <div class="col-lg-6">
+                <div class="card border-0 shadow-sm h-100">
+                    <div class="card-header bg-white border-0 pt-3 pb-0">
+                        <h2 class="h6 fw-bold mb-0">Son aktiviteler</h2>
+                    </div>
+                    <ul class="list-group list-group-flush">
+                        @foreach (var a in Model.RecentActivity)
+                        {
+                            <li class="list-group-item small">
+                                <span class="text-muted">@a.AtUtc.ToLocalTime().ToString("g")</span>
+                                <div>@a.Message</div>
+                            </li>
+                        }
+                        @if (Model.RecentActivity.Count == 0)
+                        {
+                            <li class="list-group-item text-muted small">Kayıtlı aktivite yok.</li>
+                        }
+                    </ul>
+                </div>
+            </div>
+        </div>
+
+        <div class="card border-0 shadow-sm mt-4">
+            <div class="card-header bg-white border-0 pt-3 pb-0 d-flex justify-content-between align-items-center">
+                <h2 class="h6 fw-bold mb-0">Devam eden işler</h2>
+                <span class="small text-muted">Tamamlanmamış veya aktif akış</span>
+            </div>
+            <div class="card-body p-0">
+                @if (Model.ContinueWorking.Count == 0)
+                {
+                    <p class="text-muted small px-3 py-4 mb-0">Açık iş yok — tüm belgeler tamamlanmış veya henüz işlem başlamamış.</p>
+                }
+                else
+                {
+                    <div class="table-responsive">
+                        <table class="table table-hover mb-0 align-middle">
+                            <thead class="table-light">
+                                <tr>
+                                    <th>Başlık</th>
+                                    <th>Durum</th>
+                                    <th>Güncelleme</th>
+                                    <th></th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                @foreach (var d in Model.ContinueWorking)
+                                {
+                                    <tr>
+                                        <td class="text-truncate" style="max-width:12rem">@d.Title</td>
+                                        <td><partial name="_StatusBadge" model="d.Status" /></td>
+                                        <td class="small text-muted">@d.UpdatedAtUtc.ToLocalTime().ToString("g")</td>
+                                        <td class="text-end">
+                                            <a class="btn btn-sm btn-outline-secondary" asp-controller="Documents" asp-action="Details" asp-route-id="@d.Id">Aç</a>
+                                        </td>
+                                    </tr>
+                                }
+                            </tbody>
+                        </table>
+                    </div>
+                }
+            </div>
+        </div>
+    }
+</div>

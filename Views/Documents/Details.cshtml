@@ -1,0 +1,222 @@
+@*
+    [TR] Bu dosya ne işe yarar: Belge çalışma alanı (workspace) — PDF viewer alanı, toolbar, seçim overlay, sağ panel.
+    [TR] Model: DocumentWorkspaceViewModel
+    [TR] İlgili: DocumentsController.Details + Pdf endpoint, wwwroot/js/pdf-workspace.mjs
+ 
+    MODIFICATION NOTES (TR)
+    - Çoklu bölge seçimi (birden fazla kutu) ileride eklenebilir.
+    - Tam sayfa OCR için tek tıklama aksiyonu eklenebilir.
+    - Daha gelişmiş PDF viewer (thumbnail, rotate) eklenebilir.
+    - Annotation araçları ve metin overlay future sprint.
+    - AI panelinde yeni model seçenekleri ve karşılaştırma görünümü eklenebilir.
+    - Genel image-to-text işlemi bu modülün kapsamında değildir.
+    - Genel resimden metin çıkarma özelliği bu sürümde bulunmamaktadır; future work olarak düşünülmüştür.
+    - Zorluk: Orta.
+*@
+@model pdf_bitirme.Models.ViewModels.DocumentWorkspaceViewModel
+@{
+    ViewData["Title"] = $"{Model.Title} - Workspace";
+}
+
+<div class="app-page-header py-3 border-bottom border-light-subtle mb-3">
+    <div class="container d-flex flex-wrap justify-content-between align-items-center gap-2">
+        <div>
+            <h1 class="h4 fw-bold text-app-primary mb-1">Belge Calisma Alani</h1>
+            <p class="text-muted small mb-0">@Model.Title · @Model.FileName · @FileSizeFormatter.Format(Model.SizeBytes)</p>
+        </div>
+        <div class="d-flex gap-2">
+            <a class="btn btn-outline-secondary btn-sm" asp-action="Index">← Belgeler</a>
+            <partial name="_StatusBadge" model="Model.Status" />
+        </div>
+    </div>
+</div>
+
+<div class="container pb-4">
+    @Html.AntiForgeryToken()
+    <div class="workspace-shell card border-0 shadow-sm"
+         data-document-id="@Model.Id"
+         data-pdf-url="@Model.PdfEndpointUrl"
+         data-page-preview-url="@Model.PagePreviewEndpointUrl"
+         data-extract-url="@Model.ExtractTextEndpointUrl"
+         data-save-ocr-url="@Model.SaveOcrEndpointUrl"
+         data-ai-process-url="@(Url.Action("Process", "Ai") ?? "")"
+         data-ocr-result-id="@(Model.LastOcrResultId?.ToString() ?? "")"
+         data-default-ai-model="@Model.DefaultAiModel"
+         data-default-style="@Model.DefaultTranslationStyle"
+         data-current-page="@Model.CurrentPage"
+         data-zoom="@Model.ZoomPercent">
+        <div class="workspace-toolbar border-bottom px-3 py-2 d-flex flex-wrap gap-2 align-items-center">
+            <div class="btn-group btn-group-sm" role="group" aria-label="Sayfa gezinme">
+                <button type="button" class="btn btn-outline-secondary" id="btn-prev-page">Önceki</button>
+                <button type="button" class="btn btn-outline-secondary" id="btn-next-page">Sonraki</button>
+            </div>
+            <span class="small text-muted">Sayfa</span>
+            <input id="input-page-number" class="form-control form-control-sm workspace-page-input" type="number" min="1" value="@Model.CurrentPage" />
+            <span class="small text-muted" id="label-page-total">/ @Model.TotalPages</span>
+
+            <div class="vr mx-1"></div>
+
+            <div class="btn-group btn-group-sm" role="group" aria-label="Yakınlaştırma">
+                <button type="button" class="btn btn-outline-secondary" id="btn-zoom-out">-</button>
+                <button type="button" class="btn btn-outline-secondary" id="btn-zoom-in">+</button>
+                <button type="button" class="btn btn-outline-secondary" id="btn-fit-width">Genişliğe sığdır</button>
+            </div>
+            <span class="small text-muted" id="label-zoom">@Model.ZoomPercent%</span>
+
+            <div class="vr mx-1"></div>
+
+            <button type="button" class="btn btn-sm btn-outline-primary" id="btn-start-selection">Bolge Secimi Baslat</button>
+            <button type="button" class="btn btn-sm btn-success" id="btn-confirm-selection" disabled>Secimi Onayla</button>
+            <button type="button" class="btn btn-sm btn-outline-danger" id="btn-cancel-selection" disabled>Secimi Iptal Et</button>
+        </div>
+
+        <div class="workspace-body d-flex flex-column flex-lg-row">
+            <div class="workspace-viewer-area flex-grow-1 p-3">
+                <div class="workspace-viewer-frame mx-auto" id="workspace-viewer-frame">
+                    <canvas id="pdf-canvas" class="workspace-pdf-canvas"></canvas>
+                    <div id="region-overlay" class="workspace-region-overlay"></div>
+                    <div id="region-rect" class="workspace-region-rect d-none"></div>
+                </div>
+                <div id="workspace-viewer-warning" class="alert alert-info mt-3 d-none">
+                    Bu PDF, dahili goruntuleyicide bos gorunuyor olabilir. Native PDF onizlemeyi acabilirsiniz.
+                    <a href="@Model.PdfEndpointUrl" target="_blank" class="btn btn-sm btn-outline-secondary ms-2">Yeni sekmede ac</a>
+                    <button type="button" class="btn btn-sm btn-outline-primary ms-2" id="btn-open-native-preview">Sayfa ici native onizleme</button>
+                </div>
+                <div id="workspace-viewer-empty" class="alert alert-warning mt-3 d-none">
+                    PDF görüntülenemedi. Dosya yolunu ve yüklemeyi kontrol edin.
+                </div>
+                <div id="native-pdf-preview" class="d-none mt-3">
+                    <iframe id="native-pdf-frame"
+                            title="Native PDF preview"
+                            class="w-100 border rounded"
+                            style="height: 78vh;"
+                            src="@Model.PdfEndpointUrl"></iframe>
+                </div>
+            </div>
+
+            <aside class="workspace-side-panel border-top border-lg-start p-3" id="workspace-side-panel">
+                <h2 class="h6 fw-bold mb-3">Seçili Bölge Bilgisi</h2>
+                <dl class="small mb-3">
+                    <dt class="text-muted">Sayfa</dt>
+                    <dd id="region-page">@Model.SelectedRegion.PageNumber</dd>
+                    <dt class="text-muted">x</dt>
+                    <dd id="region-x">@Model.SelectedRegion.X</dd>
+                    <dt class="text-muted">y</dt>
+                    <dd id="region-y">@Model.SelectedRegion.Y</dd>
+                    <dt class="text-muted">width</dt>
+                    <dd id="region-width">@Model.SelectedRegion.Width</dd>
+                    <dt class="text-muted">height</dt>
+                    <dd id="region-height">@Model.SelectedRegion.Height</dd>
+                </dl>
+
+                @* OCR dil seçimi kaldırıldı; PaddleOCR dili otomatik algılar *@
+                <button type="button" class="btn btn-accent w-100 mb-3" id="btn-extract-text" disabled>Metni Çıkar</button>
+                <div id="ocr-status" class="small mb-2 d-none"></div>
+
+                <label for="ocr-text-placeholder" class="form-label small fw-medium">OCR Metni (duzenlenebilir)</label>
+                <textarea id="ocr-text-placeholder"
+                          class="form-control workspace-ocr-text"
+                          rows="9"
+                          placeholder="OCR çıktısı bir sonraki adımda bu alana gelecektir. Şimdilik manuel düzenlenebilir placeholder."
+                >@Model.OcrTextPlaceholder</textarea>
+                <button type="button" class="btn btn-outline-secondary btn-sm mt-2 w-100" id="btn-save-ocr-text" disabled>
+                    OCR Metnini Kaydet
+                </button>
+
+                <hr class="my-3" />
+                <h2 class="h6 fw-bold mb-2">AI İşlem Paneli</h2>
+                <div class="mb-2">
+                    <label class="form-label small mb-1" for="ai-operation">Islem</label>
+                    <select id="ai-operation" class="form-select form-select-sm">
+                        <option value="Translate">Translate</option>
+                        <option value="Summarize">Summarize</option>
+                        <option value="Rewrite">Rewrite</option>
+                        <option value="CreativeWrite">Creative Write</option>
+                        <option value="Visualize">Visualize</option>
+                    </select>
+                </div>
+                <div class="mb-2">
+                    <label class="form-label small mb-1" for="ai-model">Model</label>
+                    <select id="ai-model" class="form-select form-select-sm">
+                        @foreach (var m in Model.AvailableAiModels)
+                        {
+                            if (string.Equals(Model.DefaultAiModel, m, StringComparison.OrdinalIgnoreCase))
+                            {
+                                <option value="@m" selected>@m</option>
+                            }
+                            else
+                            {
+                                <option value="@m">@m</option>
+                            }
+                        }
+                    </select>
+                    <div class="small text-muted mt-1">
+                        En cok kullandiginiz model otomatik secilir; isterseniz bu listeden degistirebilirsiniz.
+                    </div>
+                </div>
+                @* Çeviri dili: sadece "Translate" işlemi seçildiğinde JS ile gösterilir *@
+                <div id="ai-translate-langs" class="mb-2" style="display:none;">
+                    <label class="form-label small mb-1" for="ai-target-language">Çeviri Dili</label>
+                    <select id="ai-target-language" class="form-select form-select-sm">
+                        <option value="Turkish">Türkçe</option>
+                        <option value="English" selected>İngilizce</option>
+                        <option value="German">Almanca</option>
+                        <option value="French">Fransızca</option>
+                        <option value="Spanish">İspanyolca</option>
+                        <option value="Italian">İtalyanca</option>
+                        <option value="Portuguese">Portekizce</option>
+                        <option value="Russian">Rusça</option>
+                        <option value="Arabic">Arapça</option>
+                        <option value="Chinese">Çince</option>
+                        <option value="Japanese">Japonca</option>
+                        <option value="Korean">Korece</option>
+                    </select>
+                </div>
+                <div class="mb-2">
+                    <label class="form-label small mb-1" for="ai-style">Stil</label>
+                    <select id="ai-style" class="form-select form-select-sm">
+                        @if (Model.DefaultTranslationStyle == "Formal")
+                        {
+                            <option value="Formal" selected>Formal</option>
+                        }
+                        else
+                        {
+                            <option value="Formal">Formal</option>
+                        }
+                        @if (Model.DefaultTranslationStyle == "Academic")
+                        {
+                            <option value="Academic" selected>Academic</option>
+                        }
+                        else
+                        {
+                            <option value="Academic">Academic</option>
+                        }
+                        @if (Model.DefaultTranslationStyle == "Simplified")
+                        {
+                            <option value="Simplified" selected>Simplified</option>
+                        }
+                        else
+                        {
+                            <option value="Simplified">Simplified</option>
+                        }
+                    </select>
+                </div>
+                <div class="mb-2">
+                    <label class="form-label small mb-1" for="ai-instruction">Ozel Yonerge (Rewrite/Prompt)</label>
+                    <textarea id="ai-instruction" rows="3" class="form-control form-control-sm"
+                              placeholder="rewrite academically / simplify this text / make it more persuasive / make it shorter"></textarea>
+                </div>
+                <button type="button" class="btn btn-dark w-100 mb-2" id="btn-ai-process">AI ile Isle</button>
+                <div id="ai-status" class="small mb-2 d-none"></div>
+                <div id="ai-preview" class="alert alert-light border small mb-0 d-none"></div>
+                <div class="small mt-2">
+                    <a id="ai-result-link" class="link-primary d-none" href="#">Detayli sonuc sayfasini ac</a>
+                </div>
+            </aside>
+        </div>
+    </div>
+</div>
+
+@section Scripts {
+    <script type="module" src="~/js/pdf-workspace.mjs" asp-append-version="true"></script>
+}

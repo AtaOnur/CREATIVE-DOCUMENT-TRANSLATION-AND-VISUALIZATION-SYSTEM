@@ -1,0 +1,28 @@
+@{
+    ViewData["Title"] = "Erisim Engellendi";
+}
+
+@*
+    [TR] Bu dosya ne işe yarar: Admin gibi yetkili sayfalara erişim reddedildiğinde kullanıcıya dost mesaj gösterir.
+    [TR] Neden gerekli: Yetkisiz erişim senaryosunu teknik hata yerine anlaşılır bir ekranla yönetmek.
+    [TR] İlgili: Program.cs AccessDeniedPath, [Authorize(Roles="Admin")] aksiyonları
+
+    MODIFICATION NOTES (TR)
+    - Gelecekte rol bazlı farklı mesajlar (User/Moderator) gösterilebilir.
+    - Yetki talep formu veya yöneticiye bildirim bağlantısı eklenebilir.
+    - Bu admin yapısı bitirme projesi kapsamında bilinçli olarak basit tutulmuştur; sonra genişletilebilir.
+    - Genel image-to-text bu sürümde yoktur, future work olarak planlanmıştır.
+*@
+
+<div class="container py-5">
+    <div class="card border-0 shadow-sm mx-auto" style="max-width: 42rem;">
+        <div class="card-body p-4 text-center">
+            <h1 class="h4 fw-bold text-danger mb-2">Bu sayfaya erisim yetkiniz yok</h1>
+            <p class="text-muted mb-4">
+                Yalnizca yonetici rolundeki kullanicilar admin paneline erisebilir.
+            </p>
+            <a class="btn btn-accent" asp-controller="Home" asp-action="Index">Ana sayfaya don</a>
+        </div>
+    </div>
+</div>
+
