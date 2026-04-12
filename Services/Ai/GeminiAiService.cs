@@ -89,6 +89,42 @@ public class GeminiAiService : IAiService
         [JsonPropertyName("data")] public string Data { get; init; } = string.Empty;
     }
 
+    // ── Imagen istek/yanıt tipleri ────────────────────────────────────────────
+    // [TR] Imagen, Gemini'den farklı bir API formatı kullanır:
+    //      - Endpoint: .../{model}:predict  (generateContent değil)
+    //      - Yanıt: predictions[].bytesBase64Encoded  (candidates değil)
+    //      Kaynak: https://ai.google.dev/api/generate-content#v1beta.models.predict
+
+    private sealed class ImagenRequest
+    {
+        [JsonPropertyName("instances")]  public List<ImagenInstance>  Instances  { get; init; } = [];
+        [JsonPropertyName("parameters")] public ImagenParameters Parameters { get; init; } = new();
+    }
+
+    private sealed class ImagenInstance
+    {
+        [JsonPropertyName("prompt")] public string Prompt { get; init; } = string.Empty;
+    }
+
+    private sealed class ImagenParameters
+    {
+        [JsonPropertyName("sampleCount")]  public int    SampleCount  { get; init; } = 1;
+        [JsonPropertyName("aspectRatio")]  public string AspectRatio  { get; init; } = "1:1";
+        // [TR] Güvenli çıktı için mevcut (varsayılan: "block_some")
+        [JsonPropertyName("safetySetting")] public string SafetySetting { get; init; } = "block_some";
+    }
+
+    private sealed class ImagenResponse
+    {
+        [JsonPropertyName("predictions")] public List<ImagenPrediction>? Predictions { get; init; }
+    }
+
+    private sealed class ImagenPrediction
+    {
+        [JsonPropertyName("bytesBase64Encoded")] public string BytesBase64Encoded { get; init; } = string.Empty;
+        [JsonPropertyName("mimeType")]           public string MimeType            { get; init; } = "image/png";
+    }
+
     // ── Yanıt JSON tipleri ────────────────────────────────────────────────────
 
     private sealed class GeminiResponse
@@ -127,10 +163,24 @@ public class GeminiAiService : IAiService
         AiProcessRequestViewModel request,
         CancellationToken cancellationToken = default)
     {
-        // [TR] "Visualize" operasyonu ve ImageModel tanımlıysa görsel üretim yoluna gir.
-        if (request.OperationType == "Visualize" && !string.IsNullOrWhiteSpace(_options.ImageModel))
+        if (request.OperationType == "Visualize")
         {
-            return await GenerateImageAsync(documentTitle, request, cancellationToken);
+            var imgModel = string.IsNullOrWhiteSpace(request.ModelName)
+                ? _options.ImageModel
+                : request.ModelName;
+
+            // [TR] Imagen modelleri Google Cloud billing gerektirir.
+            //      Ücretsiz Gemini API key'iyle çalışmaz → anlamlı hata göster.
+            if (!string.IsNullOrWhiteSpace(imgModel) &&
+                imgModel.Contains("imagen", StringComparison.OrdinalIgnoreCase))
+            {
+                return await GenerateImageWithImagenAsync(documentTitle, request, imgModel, cancellationToken);
+            }
+
+            // [TR] Gemini görsel üretimi (responseModalities: IMAGE) ücretsiz tier'da sınırlıdır.
+            //      Çalışmazsa kullanıcıya HuggingFace FLUX modelini öneririz.
+            if (!string.IsNullOrWhiteSpace(imgModel))
+                return await GenerateImageAsync(documentTitle, request, imgModel, cancellationToken);
         }
 
         return await GenerateTextAsync(documentTitle, request, cancellationToken);
@@ -177,9 +227,9 @@ public class GeminiAiService : IAiService
     private async Task<AiServiceResult> GenerateImageAsync(
         string documentTitle,
         AiProcessRequestViewModel request,
+        string imageModel,
         CancellationToken cancellationToken)
     {
-        var imageModel = _options.ImageModel;
         var url = BuildUrl(imageModel);
 
         var prompt = BuildImagePrompt(documentTitle, request);
@@ -284,6 +334,80 @@ public class GeminiAiService : IAiService
 
         _logger.LogInformation("AI görseli kaydedildi: {File}", filePath);
         return $"/ai-images/{fileName}";
+    }
+
+    // ── Imagen görsel üretimi ────────────────────────────────────────────────
+    /*
+     * [TR] Google Imagen API'sini kullanarak yüksek kaliteli görsel üretir.
+     *      Gemini'nin generateContent endpoint'inden FARKLIDIR:
+     *        • URL     : {BaseUrl}{model}:predict  ← "predict" kullanılır
+     *        • İstek   : {"instances":[{"prompt":"..."}], "parameters":{...}}
+     *        • Yanıt   : {"predictions":[{"bytesBase64Encoded":"...","mimeType":"..."}]}
+     *
+     *      Desteklenen modeller (Gemini API keyiyle çalışır):
+     *        • imagen-3.0-generate-002      → en yüksek kalite
+     *        • imagen-3.0-fast-generate-001 → hızlı, daha düşük maliyet
+     *
+     *      JÜRI SORUSU: "Imagen ile Gemini image generation farkı?"
+     *      → Imagen: özelleşmiş text-to-image modeli, daha gerçekçi ve detaylı görseller
+     *         Gemini image: genel amaçlı model, çok modlu (metin+görsel) kullanım
+     */
+    private async Task<AiServiceResult> GenerateImageWithImagenAsync(
+        string documentTitle,
+        AiProcessRequestViewModel request,
+        string modelId,
+        CancellationToken ct)
+    {
+        // [TR] Imagen URL formatı: BaseUrl/{model}:predict
+        //      Örnek: .../imagen-3.0-generate-002:predict
+        var baseUrl = _options.BaseUrl.TrimEnd('/');
+        var url = $"{baseUrl}/{modelId}:predict?key={_options.ApiKey}";
+
+        var prompt = BuildImagePrompt(documentTitle, request);
+
+        var body = new ImagenRequest
+        {
+            Instances  = [new ImagenInstance { Prompt = prompt }],
+            Parameters = new ImagenParameters { SampleCount = 1, AspectRatio = "1:1" }
+        };
+
+        _logger.LogInformation("Imagen görsel isteği. Model: {Model}", modelId);
+
+        var response = await _http.PostAsJsonAsync(url, body, ct);
+        var raw      = await response.Content.ReadAsStringAsync(ct);
+
+        if (!response.IsSuccessStatusCode)
+        {
+            _logger.LogWarning("Imagen API hatası {Status}: {Body}", (int)response.StatusCode, raw);
+
+            // [TR] Imagen modelleri ücretsiz Gemini API key'iyle çalışmaz (Vertex AI billing gerekir).
+            //      Kullanıcıya anlamlı bir yönlendirme mesajı döndürülür; uygulama çökmez.
+            if ((int)response.StatusCode == 404)
+                throw new InvalidOperationException(
+                    "Imagen modelleri ücretsiz Google AI Studio API anahtarıyla kullanılamaz. " +
+                    "Google Cloud + Vertex AI faturalandırması gerektirir. " +
+                    "Lütfen 'FLUX.1 Schnell' veya 'Stable Diffusion XL' gibi HuggingFace modellerini seçin.");
+
+            throw new InvalidOperationException(
+                $"Gemini Imagen API hatası ({(int)response.StatusCode}): {raw}");
+        }
+
+        // [TR] predictions[0].bytesBase64Encoded → base64 PNG/JPEG
+        var imagenResp = JsonSerializer.Deserialize<ImagenResponse>(raw,
+            new JsonSerializerOptions { PropertyNameCaseInsensitive = true });
+
+        var prediction = imagenResp?.Predictions?.FirstOrDefault();
+        if (prediction == null || string.IsNullOrWhiteSpace(prediction.BytesBase64Encoded))
+            throw new InvalidOperationException("Imagen görsel yanıtı boş geldi.");
+
+        var imageUrl = await SaveBase64ImageAsync(
+            new GeminiInlineData { MimeType = prediction.MimeType, Data = prediction.BytesBase64Encoded }, ct);
+
+        return new AiServiceResult
+        {
+            OutputText     = $"Görsel başarıyla üretildi (Google Imagen — {modelId}).",
+            OutputImageUrl = imageUrl
+        };
     }
 
     // ── Prompt oluşturucular ──────────────────────────────────────────────────

@@ -7,3 +7,5 @@ Data/uploads/
 bin/
 obj/
 .vs/
+
+appsettings.Development.json

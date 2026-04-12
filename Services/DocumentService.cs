@@ -740,15 +740,19 @@ public class DocumentService : IDocumentService
     /// </summary>
     private List<string> GetAvailableAiModels()
     {
-        var models = _configuration.GetSection("Ai:Models").Get<List<string>>() ?? new List<string>();
-        models = models
+        // [TR] Yeni yapıda Ai:Models bir nesne dizisidir; Id alanları alınır.
+        //      Eski yapı (string dizisi) için de uyumluluk korunur.
+        var modelObjects = _configuration.GetSection("Ai:Models")
+            .GetChildren()
+            .Select(s => s["Id"] ?? s.Value ?? string.Empty)
             .Where(x => !string.IsNullOrWhiteSpace(x))
-            .Select(x => x.Trim())
             .Distinct(StringComparer.OrdinalIgnoreCase)
             .ToList();
-        if (models.Count == 0)
-            models.Add("mock-gpt");
-        return models;
+
+        if (modelObjects.Count == 0)
+            modelObjects.Add("mock-gpt");
+
+        return modelObjects;
     }
 
     /// <summary>

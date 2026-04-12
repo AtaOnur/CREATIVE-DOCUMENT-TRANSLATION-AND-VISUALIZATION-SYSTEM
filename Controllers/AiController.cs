@@ -1,20 +1,27 @@
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.Extensions.Options;
 using pdf_bitirme.Models.ViewModels;
 using pdf_bitirme.Services;
+using pdf_bitirme.Services.Ai;
 
 namespace pdf_bitirme.Controllers;
 
 /*
- * [TR] Bu dosya ne işe yarar: AI işlem isteklerini alır, mock servisi çağırır ve sonuç sayfasını döner.
+ * [TR] Bu dosya ne işe yarar: AI işlem isteklerini alır, servisi çağırır ve sonuç sayfasını döner.
  * [TR] Neden gerekli: Workspace AI panelini controller üzerinden sade bir MVC akışına bağlar.
- * [TR] İlgili: IAiService, DocumentService, Views/Ai/Result.cshtml
+ * [TR] İlgili: IAiService, MultiProviderAiService, DocumentService, Views/Ai/Result.cshtml
  *
  * MODIFICATION NOTES (TR)
- * - İleride gerçek model sağlayıcısı ile prompt şablonları burada genişletilebilir.
- * - Regenerate için alternatif model deneme seçeneği eklenebilir.
+ * - ModelsForTask endpoint'i UI'ın task'e göre model listesini dinamik yüklemesini sağlar.
+ * - Yeni task tipi eklemek: SupportedOps'a yeni değer eklenir.
+ * - Yeni sağlayıcı: MultiProviderAiService'e yeni dal eklenir, bu dosyaya dokunulmaz.
  * - Genel image-to-text işlemi bu modülün kapsamında değildir.
  * - Zorluk: Orta.
+ *
+ * JÜRI MODİFİKASYON NOTLARI (TR)
+ * - "Model listesi nereden geliyor?" → appsettings.json → Ai:Models → AiOptions üzerinden.
+ * - "Yeni task eklemek?" → SupportedOps + appsettings + UI dropdown güncellenir.
  */
 [Authorize]
 public class AiController : Controller
@@ -26,11 +33,41 @@ public class AiController : Controller
 
     private readonly IDocumentService _documentService;
     private readonly IAiService _aiService;
+    private readonly AiOptions _aiOptions;
 
-    public AiController(IDocumentService documentService, IAiService aiService)
+    public AiController(
+        IDocumentService documentService,
+        IAiService aiService,
+        IOptions<AiOptions> aiOptions)
     {
         _documentService = documentService;
         _aiService = aiService;
+        _aiOptions = aiOptions.Value;
+    }
+
+    // ─────────────────────────────────────────────────────────────────────────
+    // GET /Ai/ModelsForTask?task=Translate
+    // [TR] İstemcinin seçtiği task için uygun model listesini JSON olarak döner.
+    //      UI bu endpoint'i task değiştiğinde fetch ile çağırır ve model dropdown'ı günceller.
+    //
+    // Örnek yanıt:
+    // [
+    //   { "id": "gemini-2.5-flash", "label": "Gemini 2.5 Flash", "provider": "Gemini" },
+    //   { "id": "facebook/nllb-200-distilled-600M", "label": "NLLB-200 ...", "provider": "HuggingFace" }
+    // ]
+    // ─────────────────────────────────────────────────────────────────────────
+    [HttpGet]
+    public IActionResult ModelsForTask([FromQuery] string task)
+    {
+        if (string.IsNullOrWhiteSpace(task))
+            return BadRequest(new { ok = false, message = "Task parametresi gerekli." });
+
+        var models = _aiOptions.Models
+            .Where(m => m.Tasks.Contains(task, StringComparer.OrdinalIgnoreCase))
+            .Select(m => new { id = m.Id, label = m.Label, provider = m.Provider })
+            .ToList();
+
+        return Ok(models);
     }
 
     [HttpPost]
