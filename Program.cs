@@ -55,13 +55,25 @@ else
 
 // ─── AI SERVİSİ KAYDI ────────────────────────────────────────────────────────
 // [TR] Ai:Provider değerine göre hangi yapay zeka sağlayıcısı kullanılacağı belirlenir.
-//      "Gemini" → GeminiAiService (Google Gemini REST API, gerçek sonuçlar)
-//      diğer    → MockAiService (geliştirme/sunum için)
+//      "Multi"   → MultiProviderAiService (Gemini + HuggingFace + Groq, model adına yönlendirir)
+//      "Gemini"  → GeminiAiService (yalnızca Google Gemini)
+//      diğer     → MockAiService (geliştirme/sunum için)
+builder.Services.Configure<GeminiAiOptions>(builder.Configuration.GetSection("Ai:Gemini"));
+builder.Services.Configure<AiOptions>(builder.Configuration.GetSection("Ai"));
+
 var aiProvider = builder.Configuration.GetValue<string>("Ai:Provider") ?? "Mock";
-if (aiProvider.Equals("Gemini", StringComparison.OrdinalIgnoreCase))
+if (aiProvider.Equals("Multi", StringComparison.OrdinalIgnoreCase))
 {
-    builder.Services.Configure<GeminiAiOptions>(builder.Configuration.GetSection("Ai:Gemini"));
-    // [TR] AddHttpClient ile HttpClient doğru yaşam döngüsünde enjekte edilir (her istek için yeni bağlantı değil, havuzlama yapılır).
+    // [TR] Multi modunda Gemini, HuggingFace ve Groq servisleri kayıt edilir.
+    //      MultiProviderAiService, model tanımındaki Provider alanına göre doğru servise yönlendirir.
+    builder.Services.AddHttpClient<GeminiAiService>();
+    builder.Services.AddHttpClient<HuggingFaceAiService>();
+    builder.Services.AddHttpClient<GroqAiService>();
+    builder.Services.AddHttpClient<StabilityAiService>();     // Stability AI eklendi
+    builder.Services.AddScoped<IAiService, MultiProviderAiService>();
+}
+else if (aiProvider.Equals("Gemini", StringComparison.OrdinalIgnoreCase))
+{
     builder.Services.AddHttpClient<GeminiAiService>();
     builder.Services.AddScoped<IAiService, GeminiAiService>();
 }
