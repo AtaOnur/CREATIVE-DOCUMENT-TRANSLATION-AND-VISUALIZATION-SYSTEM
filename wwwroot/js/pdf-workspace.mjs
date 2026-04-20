@@ -146,6 +146,8 @@ function clearDraftRect() {
   rect.style.top = "";
   rect.style.width = "";
   rect.style.height = "";
+  // [TR] Bölge temizlenince koordinat panelini de sıfırla.
+  setRegionInfo(null);
 }
 
 function drawDraftRect(x1, y1, x2, y2) {
@@ -160,6 +162,10 @@ function drawDraftRect(x1, y1, x2, y2) {
   rect.style.width = `${width}px`;
   rect.style.height = `${height}px`;
   rect.classList.remove("d-none");
+
+  // [TR] Çizim sırasında koordinatları canlı olarak göster;
+  //      kullanıcı "Seçimi Onayla" basmadan da değerleri görebilir.
+  setRegionInfo({ pageNumber: currentPage, x: left, y: top, width, height });
 }
 
 async function renderPage(pageNumber) {
@@ -409,15 +415,72 @@ if (btnAiProcess) {
   });
 }
 
+// ─── MODEL LİSTESİ DİNAMİK YÜKLEME ──────────────────────────────────────────
+// [TR] Seçilen task'e göre /Ai/ModelsForTask?task={task} endpoint'i çağrılır.
+//      Sadece o task'i destekleyen modeller dropdown'a eklenir.
+//      Bu sayede örneğin "Summarize" seçildiğinde Gemini image modeli görünmez.
+//
+// MODIFICATION NOTES (TR)
+// - Yeni task eklendiğinde bu fonksiyon otomatik çalışır; güncelleme gerekmez.
+// - Offline durumda: fetch başarısız olursa mevcut seçenekler korunur (sessiz hata).
+
+const defaultModelFromAttr = aiModel?.getAttribute("data-default-model") ?? "";
+
+async function loadModelsForTask(task) {
+  if (!aiModel) return;
+
+  try {
+    const resp = await fetch(`/Ai/ModelsForTask?task=${encodeURIComponent(task)}`, {
+      credentials: "same-origin"
+    });
+
+    if (!resp.ok) return;
+
+    const models = await resp.json(); // [{ id, label, provider }]
+
+    // [TR] Mevcut seçenekleri temizle, yeni listeyi ekle.
+    aiModel.innerHTML = "";
+
+    if (!models || models.length === 0) {
+      aiModel.innerHTML = '<option value="">Bu işlem için model bulunamadı</option>';
+      return;
+    }
+
+    models.forEach(m => {
+      const opt = document.createElement("option");
+      opt.value = m.id;
+      // [TR] Provider bilgisi etikette parantez içinde gösterilir (Gemini / HuggingFace).
+      opt.textContent = m.label;
+      // [TR] Kullanıcının varsayılan modeli bu listede varsa otomatik seçilir.
+      if (m.id === defaultModelFromAttr) opt.selected = true;
+      aiModel.appendChild(opt);
+    });
+
+    // [TR] Varsayılan model listede yoksa ilk modeli seç.
+    if (!aiModel.value && aiModel.options.length > 0) {
+      aiModel.selectedIndex = 0;
+    }
+
+  } catch {
+    // [TR] Ağ hatasında sessizce başarısız ol; mevcut dropdown değişmez.
+  }
+}
+
 // [TR] Dil seçici satırını sadece "Translate" işlemi seçiliyken göster.
 function syncTranslateLangsVisibility() {
   if (!aiTranslateLangs) return;
   const op = aiOperation ? aiOperation.value : "";
   aiTranslateLangs.style.display = op === "Translate" ? "" : "none";
 }
+
 if (aiOperation) {
-  aiOperation.addEventListener("change", syncTranslateLangsVisibility);
+  aiOperation.addEventListener("change", () => {
+    // [TR] İşlem değiştiğinde: önce model listesi güncellenir, sonra dil seçici ayarlanır.
+    loadModelsForTask(aiOperation.value);
+    syncTranslateLangsVisibility();
+  });
 }
+
 // Sayfa ilk yüklendiğinde de hizala
 syncTranslateLangsVisibility();
 
@@ -494,7 +557,9 @@ async function init() {
     setSelectionUi();
     setRegionInfo(null);
     if (lastOcrResultId && btnSaveOcrText) btnSaveOcrText.disabled = false;
-    if (aiModel) aiModel.value = defaultAiModel;
+    // [TR] Sayfa açılışında varsayılan işlem (Translate) için model listesi yüklenir.
+    //      Kullanıcının en çok kullandığı model (defaultModelFromAttr) otomatik seçilir.
+    await loadModelsForTask(aiOperation ? aiOperation.value : "Translate");
     if (aiStyle) aiStyle.value = defaultStyle;
   } catch (err) {
     console.error(err);
