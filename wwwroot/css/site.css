@@ -216,6 +216,7 @@ html {
 
 .workspace-viewer-area {
   background: #f2f4f7;
+  min-width: 0; /* allow flex item to shrink when canvas grows */
 }
 
 .workspace-viewer-frame {
@@ -259,6 +260,7 @@ html {
   width: 100%;
   max-width: 360px;
   background: #ffffff;
+  flex: 0 0 360px; /* keep side panel at fixed width in flex row */
 }
 
 .workspace-ocr-text {

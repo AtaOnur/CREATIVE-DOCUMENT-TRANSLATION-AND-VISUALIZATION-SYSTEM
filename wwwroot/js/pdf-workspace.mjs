@@ -35,6 +35,7 @@ const antiForgeryToken = antiForgeryInput ? antiForgeryInput.value : "";
 const canvas = document.getElementById("pdf-canvas");
 const overlay = document.getElementById("region-overlay");
 const rect = document.getElementById("region-rect");
+const viewerFrame = document.getElementById("workspace-viewer-frame");
 const empty = document.getElementById("workspace-viewer-empty");
 const warning = document.getElementById("workspace-viewer-warning");
 const nativePreview = document.getElementById("native-pdf-preview");
@@ -182,6 +183,10 @@ async function renderPage(pageNumber) {
 
     const ctx = canvas.getContext("2d");
     await page.render({ canvasContext: ctx, viewport }).promise;
+    // Align viewer: if canvas wider than frame, left-align so left edge stays visible.
+    if (viewerFrame) {
+      viewerFrame.style.justifyContent = canvas.width > viewerFrame.clientWidth ? "flex-start" : "center";
+    }
   }
 
   pageInput.value = String(currentPage);
@@ -217,6 +222,10 @@ async function renderPageFromServer(pageNumber) {
     ctx.clearRect(0, 0, canvas.width, canvas.height);
     ctx.drawImage(img, 0, 0);
     URL.revokeObjectURL(imgUrl);
+    // Align viewer: if canvas wider than frame, left-align so left edge stays visible.
+    if (viewerFrame) {
+      viewerFrame.style.justifyContent = canvas.width > viewerFrame.clientWidth ? "flex-start" : "center";
+    }
     return true;
   } catch {
     return false;
