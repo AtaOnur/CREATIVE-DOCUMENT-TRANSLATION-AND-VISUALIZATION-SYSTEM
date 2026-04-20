@@ -137,21 +137,15 @@
                 </div>
                 <div class="mb-2">
                     <label class="form-label small mb-1" for="ai-model">Model</label>
-                    <select id="ai-model" class="form-select form-select-sm">
-                        @foreach (var m in Model.AvailableAiModels)
-                        {
-                            if (string.Equals(Model.DefaultAiModel, m, StringComparison.OrdinalIgnoreCase))
-                            {
-                                <option value="@m" selected>@m</option>
-                            }
-                            else
-                            {
-                                <option value="@m">@m</option>
-                            }
-                        }
+                    @* [TR] Model listesi JS tarafından /Ai/ModelsForTask?task={işlem} endpoint'inden yüklenir.
+                       Seçilen işlem değiştiğinde sadece o işlemi destekleyen modeller gösterilir. *@
+                    <select id="ai-model" class="form-select form-select-sm"
+                            data-default-model="@Model.DefaultAiModel">
+                        <option value="">Yükleniyor…</option>
                     </select>
                     <div class="small text-muted mt-1">
-                        En cok kullandiginiz model otomatik secilir; isterseniz bu listeden degistirebilirsiniz.
+                        Sadece seçilen işlemi destekleyen modeller listelenir.
+                        En çok kullandığınız model otomatik seçili gelir.
                     </div>
                 </div>
                 @* Çeviri dili: sadece "Translate" işlemi seçildiğinde JS ile gösterilir *@
