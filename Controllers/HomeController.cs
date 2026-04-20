@@ -35,6 +35,15 @@ public class HomeController : Controller
         return View();
     }
 
+    /// <summary>Sıkça Sorulan Sorular sayfası.</summary>
+    // [TR] Kullanıcıların sisteme dair en sık karşılaştıkları
+    //      soruları tek sayfada toplar (OCR, AI modelleri,
+    //      dosya limitleri, hesap yönetimi vb.).
+    public IActionResult Faq()
+    {
+        return View();
+    }
+
     [ResponseCache(Duration = 0, Location = ResponseCacheLocation.None, NoStore = true)]
     public IActionResult Error()
     {
