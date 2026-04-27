@@ -6,7 +6,8 @@
 
   <PropertyGroup>
     <!-- Next.js bitirme uygulaması ayrı proje; VS/MSBuild bu klasörü taramasın (yanlış TS hataları önlenir). -->
-    <DefaultItemExcludes>$(DefaultItemExcludes);web\**</DefaultItemExcludes>
+    <!-- [TR] Tests klasörü ayrı bir test projesidir; ana web build'i o dosyaları taramamalı. -->
+    <DefaultItemExcludes>$(DefaultItemExcludes);web\**;Tests\**</DefaultItemExcludes>
     <TargetFramework>net8.0</TargetFramework>
     <Nullable>enable</Nullable>
     <ImplicitUsings>enable</ImplicitUsings>
