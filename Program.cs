@@ -339,3 +339,8 @@ static void SeedDemoData(string contentRootPath, AppDbContext db)
 
     db.SaveChanges();
 }
+
+// [TR] WebApplicationFactory<Program> test projesinden erişebilsin diye
+//      top-level Program sınıfını public hale getiren marker partial.
+//      .NET 6+ top-level statements ile birlikte standart yaklaşım budur.
+public partial class Program { }
