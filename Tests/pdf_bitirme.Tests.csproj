@@ -1,0 +1,55 @@
+<!--
+    [TR] Bu dosya ne işe yarar:
+         pdf_bitirme.Tests — ana web projesinin Unit / Integration / Functional /
+         Non-Functional testlerini barındıran xUnit test projesidir.
+
+    [TR] Neden gerekli:
+         Servis ve controller seviyesindeki davranışı, gerçek dış API'lere (HuggingFace,
+         Groq, Gemini, Stability) hiçbir HTTP isteği atmadan, mock HttpMessageHandler
+         üzerinden doğrular. Böylece testler hızlı, deterministik ve internet
+         bağlantısından bağımsızdır.
+
+    PAKETLER:
+      - Microsoft.NET.Test.Sdk          : test runner altyapısı
+      - xunit                            : test framework (xUnit)
+      - xunit.runner.visualstudio        : VS Test Explorer / dotnet test entegrasyonu
+      - Moq                              : mocklama (HttpMessageHandler hariç tipler için)
+      - Microsoft.AspNetCore.Mvc.Testing : WebApplicationFactory<TEntry> ile entegrasyon
+
+    KULLANIM:
+      cd Tests
+      dotnet test               -> tüm testleri çalıştırır
+      dotnet test (filter argümanı ile)  -> kategoriye göre çalıştırır
+
+    MODIFICATION NOTES (TR)
+      - Yeni test klasörü ekle (örn. SecurityTests/), sınıfları içine koy.
+      - Test çıktısı için TRX/HTML reporter eklenebilir.
+      - GitHub Actions: dotnet test komutu ile CI'a entegre edilebilir.
+-->
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <TargetFramework>net8.0</TargetFramework>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <IsPackable>false</IsPackable>
+    <IsTestProject>true</IsTestProject>
+    <RootNamespace>pdf_bitirme.Tests</RootNamespace>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Microsoft.NET.Test.Sdk" Version="17.11.1" />
+    <PackageReference Include="xunit" Version="2.9.2" />
+    <PackageReference Include="xunit.runner.visualstudio" Version="2.8.2">
+      <IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
+      <PrivateAssets>all</PrivateAssets>
+    </PackageReference>
+    <PackageReference Include="Moq" Version="4.20.72" />
+    <PackageReference Include="Microsoft.AspNetCore.Mvc.Testing" Version="8.0.11" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\pdf_bitirme.csproj" />
+  </ItemGroup>
+
+</Project>
