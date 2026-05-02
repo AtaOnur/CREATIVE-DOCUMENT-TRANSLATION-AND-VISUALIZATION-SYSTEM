@@ -741,6 +741,48 @@ public class GeminiAiService : IAiService
             """;
     }
 
+    /// <summary>
+    /// Tek kullanıcı mesajıyla kısa metin üretir (örn. Wolfram sorgu planlama).
+    /// </summary>
+    public async Task<string> GenerateSimpleTextAsync(
+        string? modelOverride,
+        string userPrompt,
+        CancellationToken cancellationToken)
+    {
+        if (string.IsNullOrWhiteSpace(_options.ApiKey))
+            throw new InvalidOperationException("Gemini API anahtarı yapılandırılmadı.");
+
+        var model = string.IsNullOrWhiteSpace(modelOverride) ? _options.DefaultModel : modelOverride.Trim();
+        var url = BuildUrl(model);
+
+        var body = new GeminiTextRequest
+        {
+            Contents =
+            [
+                new GeminiContent { Role = "user", Parts = [new GeminiPart { Text = userPrompt }] }
+            ],
+            GenerationConfig = new GeminiTextConfig
+            {
+                MaxOutputTokens = Math.Min(2048, Math.Max(256, _options.MaxOutputTokens)),
+                Temperature = 0.12f
+            }
+        };
+
+        var response = await SendAsync(url, body, cancellationToken);
+        var geminiResp = await ReadResponseAsync(response, cancellationToken);
+
+        var candidate = geminiResp?.Candidates?.FirstOrDefault();
+        var allTextParts = candidate?.Content?.Parts?
+            .Where(p => !string.IsNullOrEmpty(p.Text))
+            .Select(p => p.Text!) ?? Enumerable.Empty<string>();
+        var text = string.Join("\n", allTextParts).Trim();
+
+        if (string.IsNullOrWhiteSpace(text))
+            throw new InvalidOperationException("Gemini boş metin döndürdü (planlayıcı).");
+
+        return text;
+    }
+
     private static string TryParseGeminiError(string body)
     {
         try

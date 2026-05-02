@@ -123,6 +123,15 @@ public class WolframAlphaApiOptions
 
     /// <summary>İstek zaman aşımı (saniye).</summary>
     public int TimeoutSeconds { get; set; } = 60;
+
+    /// <summary>
+    /// Karmaşık OCR/tablolar için önce Gemini ile tek satır Wolfram ifadesi üret.
+    /// <see cref="GeminiAiOptions.ApiKey"/> dolu olmalı.
+    /// </summary>
+    public bool UseGeminiQueryPlanner { get; set; } = true;
+
+    /// <summary>Boşsa <c>Ai:Gemini:DefaultModel</c> kullanılır.</summary>
+    public string GeminiPlannerModel { get; set; } = "";
 }
 
 /// <summary>
