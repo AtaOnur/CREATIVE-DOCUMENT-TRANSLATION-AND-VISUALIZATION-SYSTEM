@@ -70,6 +70,32 @@ public class MockAiService : IAiService
                 result.OutputImageUrl = "https://dummyimage.com/960x540/0f3d4c/ffffff&text=CreativeDoc+Mock+Visualization";
                 break;
 
+            // [TR] Mock Explanation: gerçek model olmadan UI akışını test edebilmek için.
+            //      Görsel veya metin verildiğinde sahte ama tanınabilir bir analiz çıktısı verir.
+            case "Explanation":
+                {
+                    var hasImage = !string.IsNullOrWhiteSpace(request.InputImageBase64);
+                    result.OutputText =
+                        "[Mock Explanation]\n\n" +
+                        $"İçerik tipi: {(hasImage ? "Görsel + Metin" : "Yalnız Metin")}\n" +
+                        $"Belge: {documentTitle}\n" +
+                        $"Kullanıcı yönergesi: {(string.IsNullOrWhiteSpace(instruction) ? "(yok)" : instruction)}\n\n" +
+                        "Detaylı analiz (mock):\n" +
+                        "- Sağlanan içerik tanımlanır ve türü belirlenir.\n" +
+                        "- Sayısal veri varsa kategorize edilir; metinse anahtar kişi/yer/tarih çıkarılır.\n" +
+                        "- Görsel varsa ana özne, arka plan ve dikkat çeken öğeler tarif edilir.\n\n" +
+                        $"Örnek girdi: {(string.IsNullOrWhiteSpace(text) ? "(metin yok)" : text)}";
+                }
+                break;
+
+            case "Math":
+                result.OutputText =
+                    "[Mock Math / Grafik]\n\n" +
+                    "Gerçek kullanımda Gemini görsel model grafik PNG üretir veya Wolfram Alpha çözüm/grafik döndürür.";
+                result.OutputImageUrl =
+                    "https://dummyimage.com/960x540/1e40af/ffffff&text=Mock+Math+Chart";
+                break;
+
             default:
                 result.OutputText = "[Mock AI] Unsupported operation type.";
                 break;

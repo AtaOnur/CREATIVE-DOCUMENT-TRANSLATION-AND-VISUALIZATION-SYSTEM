@@ -18,6 +18,7 @@ public interface IOcrService
 {
     /// <summary>
     /// [TR] Verilen PDF dosyasının belirtilen sayfasındaki seçili bölgeden metin çıkarır.
+    /// pdftoppm (Poppler) ile sayfa raster edilir, ardından bölge kırpılır.
     /// </summary>
     /// <param name="language">
     /// OCR dil kodu. PaddleOCR: "en", "latin", "french", "german", "ch" vb.
@@ -27,6 +28,22 @@ public interface IOcrService
         string pdfFilePath,
         string documentTitle,
         RegionSelectionViewModel region,
+        string? language = null,
+        CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// [TR] Tarayıcıdan gelen, önceden kırpılmış PNG/JPEG görseli üzerinde OCR çalıştırır.
+    /// Bu yol pdftoppm/Poppler bağımlılığını ortadan kaldırır — sunucuda yalnız Tesseract
+    /// veya Python+PaddleOCR kurulu olması yeterlidir.
+    /// </summary>
+    /// <param name="imageBytes">PNG veya JPEG görüntü baytları.</param>
+    /// <param name="documentTitle">Loglama amaçlı belge başlığı (opsiyonel).</param>
+    /// <param name="language">
+    /// OCR dil kodu. null ise appsettings varsayılanı kullanılır.
+    /// </param>
+    Task<string> ExtractFromImageBytesAsync(
+        byte[] imageBytes,
+        string documentTitle,
         string? language = null,
         CancellationToken cancellationToken = default);
 }

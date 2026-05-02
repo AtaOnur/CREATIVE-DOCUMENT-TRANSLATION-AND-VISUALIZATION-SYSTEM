@@ -32,5 +32,21 @@ public class MockOcrService : IOcrService
             "This is a placeholder extracted text from the selected PDF region. " +
             "User can edit this text before AI processing.";
     }
+
+    public async Task<string> ExtractFromImageBytesAsync(
+        byte[] imageBytes,
+        string documentTitle,
+        string? language = null,
+        CancellationToken cancellationToken = default)
+    {
+        // [TR] Mock: gerçek OCR yapmadan, görsel boyutunu raporlayan bir placeholder döner.
+        await Task.Delay(450, cancellationToken);
+        var size = imageBytes?.Length ?? 0;
+        return
+            $"[Mock OCR — image] {documentTitle}{Environment.NewLine}" +
+            $"Image bytes received: {size}{Environment.NewLine}{Environment.NewLine}" +
+            "This is placeholder text from a browser-cropped image. " +
+            "Replace this mock with a real OCR engine (Tesseract/Paddle) for production.";
+    }
 }
 

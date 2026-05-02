@@ -110,6 +110,22 @@ public class StabilityApiOptions
 }
 
 /// <summary>
+/// Wolfram Alpha Query API — grafik çizimi, denklem çözümü, hesaplama (App ID gerekir).
+/// https://products.wolframalpha.com/api/documentation/
+/// </summary>
+public class WolframAlphaApiOptions
+{
+    /// <summary>Uygulama kimliği.</summary>
+    public string AppId { get; set; } = string.Empty;
+
+    /// <summary>Sorgu endpoint'i.</summary>
+    public string BaseUrl { get; set; } = "https://api.wolframalpha.com/v2/query";
+
+    /// <summary>İstek zaman aşımı (saniye).</summary>
+    public int TimeoutSeconds { get; set; } = 60;
+}
+
+/// <summary>
 /// Ai bölümünün tüm yapılandırması.
 /// appsettings.json → Ai bölümünden okunur.
 /// </summary>
@@ -129,4 +145,7 @@ public class AiOptions
 
     /// <summary>Stability AI bağlantı ayarları.</summary>
     public StabilityApiOptions Stability { get; set; } = new();
+
+    /// <summary>Wolfram Alpha API bağlantı ayarları.</summary>
+    public WolframAlphaApiOptions WolframAlpha { get; set; } = new();
 }

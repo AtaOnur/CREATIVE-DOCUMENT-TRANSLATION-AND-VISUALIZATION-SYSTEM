@@ -28,7 +28,11 @@ public class AiController : Controller
 {
     private static readonly HashSet<string> SupportedOps =
     [
-        "Translate", "Summarize", "Rewrite", "CreativeWrite", "Visualize"
+        // [TR] "Explanation": kullanıcının seçtiği metin ve/veya "Görsel Seç"
+        //      ile yakaladığı görseli analiz eder. Çıktı: içerik nedir + ne anlatıyor.
+        //      Multimodal (Gemini) için görsel + metin birlikte değerlendirilir;
+        //      sadece metin destekleyen sağlayıcılarda metin analizine düşer.
+        "Translate", "Summarize", "Rewrite", "CreativeWrite", "Visualize", "Explanation", "Math"
     ];
 
     private readonly IDocumentService _documentService;
@@ -80,8 +84,15 @@ public class AiController : Controller
         if (!SupportedOps.Contains(request.OperationType ?? string.Empty))
             return BadRequest(new { ok = false, message = "Geçersiz AI işlem tipi." });
 
-        if (string.IsNullOrWhiteSpace(request.InputText))
-            return BadRequest(new { ok = false, message = "İşlenecek metin boş olamaz." });
+        // [TR] Artık üç girdiden en az biri yeterli:
+        //      - InputText (OCR/serbest metin)
+        //      - CustomInstruction (kullanıcı prompt'u)
+        //      - InputImageBase64 ("Görsel Seç" ile yakalanmış multimodal görsel)
+        var hasText = !string.IsNullOrWhiteSpace(request.InputText);
+        var hasInstruction = !string.IsNullOrWhiteSpace(request.CustomInstruction);
+        var hasImage = !string.IsNullOrWhiteSpace(request.InputImageBase64);
+        if (!hasText && !hasInstruction && !hasImage)
+            return BadRequest(new { ok = false, message = "İşlenecek metin, görsel veya yönerge gerekli." });
 
         var email = User.Identity!.Name!;
         var workspace = await _documentService.GetWorkspaceAsync(email, request.DocumentId, cancellationToken);

@@ -9,3 +9,7 @@ obj/
 .vs/
 
 appsettings.Development.json
+
+# Python cache (PaddleOCR yardımcı script)
+__pycache__/
+Scripts/__pycache__/
