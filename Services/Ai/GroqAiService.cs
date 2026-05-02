@@ -66,7 +66,21 @@ public class GroqAiService : IAiService
         CancellationToken cancellationToken = default)
     {
         if (string.IsNullOrWhiteSpace(request.InputText))
+        {
+            // [TR] Math işlemi bazen yalnız özel yönerge ile gelir (örn. Wolfram sorgusu).
+            //      Groq yine de Math'i desteklemez — net mesaj döndür.
+            if (string.Equals(request.OperationType, "Math", StringComparison.OrdinalIgnoreCase)
+                && !string.IsNullOrWhiteSpace(request.CustomInstruction))
+            {
+                return new AiServiceResult
+                {
+                    OutputText =
+                        "[Math / grafik işlemi Groq ile yapılamaz. Model olarak Gemini görsel veya Wolfram Alpha seçin.]"
+                };
+            }
+
             return new AiServiceResult { OutputText = "[İşlenecek metin boş]" };
+        }
 
         try
         {
@@ -76,6 +90,15 @@ public class GroqAiService : IAiService
                 "Summarize"     => await SummarizeAsync(request, cancellationToken),
                 "Rewrite"       => await RewriteAsync(request, cancellationToken),
                 "CreativeWrite" => await CreativeWriteAsync(request, cancellationToken),
+                // [TR] Explanation: Groq metin LLM'leri görsel almaz; sadece metni
+                //      analiz ederek açıklayıcı çıktı üretir. Görsel için Gemini önerilir.
+                "Explanation"   => await ExplainAsync(request, cancellationToken),
+                "Math" => new AiServiceResult
+                {
+                    OutputText =
+                        "[Math görsel grafik veya Wolfram çözümü Groq ile desteklenmez. " +
+                        "Gemini 3.1 görsel model veya Wolfram Alpha seçiniz.]"
+                },
                 "Visualize"     => new AiServiceResult
                 {
                     OutputText = "[Görsel üretimi Groq modellerinde desteklenmemektedir. " +
@@ -135,7 +158,34 @@ public class GroqAiService : IAiService
         return await CallAsync(req.ModelName!,
             "You are a creative writer. Generate creative, engaging content based on the given text.",
             $"Instruction: {instruction}\n\nSource text:\n{req.InputText}",
-            ct, maxTokens: 500);
+            ct, maxTokens: 3000);
+    }
+
+    // ─── 4b. AÇIKLAMA / EXPLANATION ────────────────────────────────────────────
+    /*
+     * [TR] Verilen metni analitik olarak açıklar (Groq metin modelleri için).
+     *      Görsel girdi alınmaz; multimodal kullanım için kullanıcı Gemini seçmelidir.
+     *      Çıktıda: içerik tipi tespiti, detaylı analiz (sayım/gruplama/özet) ve
+     *      anlamlı çıkarımlar.
+     */
+    private async Task<AiServiceResult> ExplainAsync(AiProcessRequestViewModel req, CancellationToken ct)
+    {
+        var instruction = string.IsNullOrWhiteSpace(req.CustomInstruction)
+            ? "(no extra instruction)"
+            : req.CustomInstruction;
+
+        var input = req.InputText!.Length > 4000
+            ? req.InputText[..4000]
+            : req.InputText;
+
+        return await CallAsync(req.ModelName!,
+            "You are an analytical assistant. Explain the given text in Turkish: " +
+            "(1) identify the content type (e.g. story, grades table, article, code, list), " +
+            "(2) analyze it in detail (count groups/numbers, list characters/dates/places, " +
+            "describe data structure), (3) provide useful inferences. " +
+            "Use short paragraphs and bullet points when helpful.",
+            $"User instruction (priority if any): {instruction}\n\nText to explain:\n{input}",
+            ct, maxTokens: 3000);
     }
 
     // ─── GROQ API ÇAĞRISI ────────────────────────────────────────────────────
@@ -150,7 +200,7 @@ public class GroqAiService : IAiService
         string systemPrompt,
         string userPrompt,
         CancellationToken ct,
-        int maxTokens = 1000)
+        int maxTokens = 4000)
     {
         var payload = new
         {

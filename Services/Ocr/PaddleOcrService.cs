@@ -123,6 +123,67 @@ public class PaddleOcrService : IOcrService
     }
 
     /// <summary>
+    /// [TR] Tarayıcıdan gelen, önceden kırpılmış PNG/JPEG üzerinde PaddleOCR çalıştırır.
+    /// Bu yol pdftoppm/Poppler kurulumunu ortadan kaldırır — yalnız Python + paddleocr yeterli.
+    /// </summary>
+    public async Task<string> ExtractFromImageBytesAsync(
+        byte[] imageBytes,
+        string documentTitle,
+        string? language = null,
+        CancellationToken cancellationToken = default)
+    {
+        if (imageBytes == null || imageBytes.Length == 0)
+            throw new InvalidOperationException("OCR için görüntü baytları boş.");
+
+        var ocrCfg = _config.GetSection("Ocr");
+        var pythonPath = ocrCfg["PaddlePythonPath"] ?? "python";
+
+        var scriptPath = Path.Combine(_env.ContentRootPath, "Scripts", "paddle_ocr.py");
+        if (!File.Exists(scriptPath))
+            throw new InvalidOperationException($"paddle_ocr.py scripti bulunamadı: {scriptPath}");
+
+        var tempRoot = Path.Combine(_env.ContentRootPath, "Data", "tmp-ocr");
+        Directory.CreateDirectory(tempRoot);
+
+        var key = Guid.NewGuid().ToString("N");
+        var imgPath = Path.Combine(tempRoot, $"pocr_img_{key}.png");
+
+        try
+        {
+            await File.WriteAllBytesAsync(imgPath, imageBytes, cancellationToken);
+
+            var (stdout, stderr, exitCode) = await RunProcessWithOutputAsync(
+                pythonPath,
+                $"\"{scriptPath}\" \"{imgPath}\"",
+                cancellationToken);
+
+            if (exitCode == 2)
+                throw new InvalidOperationException(
+                    "PaddleOCR kurulu değil. Kurulum:\n  pip install paddleocr paddlepaddle");
+
+            if (exitCode != 0)
+            {
+                _logger.LogError("PaddleOCR (image) script hatası. ExitCode={Code} STDERR={Err}", exitCode, stderr);
+                throw new InvalidOperationException($"PaddleOCR script hatası (exit {exitCode}): {stderr?.Trim()}");
+            }
+
+            var text = stdout?.Trim();
+            if (string.IsNullOrWhiteSpace(text))
+                text = "[PaddleOCR] Seçili bölgede metin tespit edilemedi.";
+            return text;
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "PaddleOCR (image) hatası. Doküman: {Doc}", documentTitle);
+            throw;
+        }
+        finally
+        {
+            TryDelete(imgPath);
+        }
+    }
+
+    /// <summary>
     /// [TR] Normalize (0-1) veya piksel koordinatlara göre bölge kırpma işlemi.
     /// System.Drawing.Common Windows'a özgüdür; [SupportedOSPlatform("windows")] ile işaretlendi.
     /// </summary>

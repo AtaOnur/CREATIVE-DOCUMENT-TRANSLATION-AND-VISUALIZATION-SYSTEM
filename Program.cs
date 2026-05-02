@@ -35,23 +35,58 @@ builder.Services.AddScoped<IDocumentService, DocumentService>();
 builder.Services.AddScoped<IAdminService, AdminService>();
 
 // ─── OCR SERVİSİ KAYDI ───────────────────────────────────────────────────────
-// [TR] Ocr:Provider değerine göre hangi OCR sağlayıcısı kullanılacağı belirlenir.
+// [TR] Hem Tesseract hem PaddleOCR concrete servisleri DI'ya kayıt edilir;
+//      kullanıcı UI'da "OCR Motoru" dropdown'undan istediğini seçebilir.
+//      IOcrService bağlaması ise appsettings → Ocr:Provider varsayılanı
+//      (geriye dönük uyumluluk; kullanıcı UI'da seçim yapmazsa bu kullanılır).
+//
 //      "Paddle"    → PaddleOcrService  (Python tabanlı, yüksek doğruluk)
 //      "Tesseract" → TesseractCliOcrService (CLI tabanlı, kurulumu kolay)
 //      diğer/boş   → MockOcrService (geliştirme/sunum için)
+//
+// MODIFICATION NOTES (TR)
+// - Concrete servisleri ayrıca kayıt etmek, controller'ın istek bazlı motor
+//   seçmesini mümkün kılar (DocumentsController.ExtractText → request.Engine).
+// - Yeni motor (örn. EasyOCR) için: yeni concrete servis eklenir, burada
+//   ve OcrEngineFactory benzeri bir yerde kayıt edilir.
+// [TR] Concrete servisleri DI'ya factory ile kayıt — analyser CA1416 platform
+//      kontrolünü factory içinde "OperatingSystem.IsWindows()" görünce
+//      doğru şekilde tanır; tip parametresi olarak generic AddScoped<T>() kullanılırsa
+//      analyser warning üretebiliyor.
+if (OperatingSystem.IsWindows())
+{
+    builder.Services.AddScoped(sp =>
+    {
+        if (!OperatingSystem.IsWindows()) throw new PlatformNotSupportedException();
+        return ActivatorUtilities.CreateInstance<TesseractCliOcrService>(sp);
+    });
+    builder.Services.AddScoped(sp =>
+    {
+        if (!OperatingSystem.IsWindows()) throw new PlatformNotSupportedException();
+        return ActivatorUtilities.CreateInstance<PaddleOcrService>(sp);
+    });
+}
+builder.Services.AddScoped<MockOcrService>();
+
 var ocrProvider = builder.Configuration.GetValue<string>("Ocr:Provider") ?? "Mock";
+// [TR] Concrete OCR servisleri yalnızca Windows'ta kayıtlı; aşağıdaki dallar
+//      OperatingSystem.IsWindows() koşulu ile korunuyor. CA1416 analizörü
+//      AND koşullarını tip parametresi seviyesine kadar takip etmediği için
+//      pragma ile susturulur (runtime'da güvenli).
+#pragma warning disable CA1416
 if (ocrProvider.Equals("Paddle", StringComparison.OrdinalIgnoreCase) && OperatingSystem.IsWindows())
 {
-    builder.Services.AddScoped<IOcrService, PaddleOcrService>();
+    builder.Services.AddScoped<IOcrService>(sp => sp.GetRequiredService<PaddleOcrService>());
 }
 else if (ocrProvider.Equals("Tesseract", StringComparison.OrdinalIgnoreCase) && OperatingSystem.IsWindows())
 {
-    builder.Services.AddScoped<IOcrService, TesseractCliOcrService>();
+    builder.Services.AddScoped<IOcrService>(sp => sp.GetRequiredService<TesseractCliOcrService>());
 }
 else
 {
-    builder.Services.AddScoped<IOcrService, MockOcrService>();
+    builder.Services.AddScoped<IOcrService>(sp => sp.GetRequiredService<MockOcrService>());
 }
+#pragma warning restore CA1416
 
 // ─── AI SERVİSİ KAYDI ────────────────────────────────────────────────────────
 // [TR] Ai:Provider değerine göre hangi yapay zeka sağlayıcısı kullanılacağı belirlenir.
@@ -70,6 +105,7 @@ if (aiProvider.Equals("Multi", StringComparison.OrdinalIgnoreCase))
     builder.Services.AddHttpClient<HuggingFaceAiService>();
     builder.Services.AddHttpClient<GroqAiService>();
     builder.Services.AddHttpClient<StabilityAiService>();     // Stability AI eklendi
+    builder.Services.AddHttpClient<WolframAlphaAiService>();
     builder.Services.AddScoped<IAiService, MultiProviderAiService>();
 }
 else if (aiProvider.Equals("Gemini", StringComparison.OrdinalIgnoreCase))

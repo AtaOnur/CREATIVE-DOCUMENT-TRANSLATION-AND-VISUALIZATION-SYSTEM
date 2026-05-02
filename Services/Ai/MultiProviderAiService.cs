@@ -28,6 +28,7 @@ public class MultiProviderAiService : IAiService
     private readonly HuggingFaceAiService _huggingFace;
     private readonly GroqAiService _groq;
     private readonly StabilityAiService _stability;
+    private readonly WolframAlphaAiService _wolfram;
     private readonly AiOptions _aiOptions;
 
     public MultiProviderAiService(
@@ -35,12 +36,14 @@ public class MultiProviderAiService : IAiService
         HuggingFaceAiService huggingFace,
         GroqAiService groq,
         StabilityAiService stability,
+        WolframAlphaAiService wolfram,
         IOptions<AiOptions> aiOptions)
     {
         _gemini    = gemini;
         _huggingFace = huggingFace;
         _groq      = groq;
         _stability = stability;
+        _wolfram   = wolfram;
         _aiOptions = aiOptions.Value;
     }
 
@@ -61,6 +64,7 @@ public class MultiProviderAiService : IAiService
             "HuggingFace" => await _huggingFace.ProcessAsync(documentTitle, request, cancellationToken),
             "Groq"        => await _groq.ProcessAsync(documentTitle, request, cancellationToken),
             "Stability"   => await _stability.ProcessAsync(documentTitle, request, cancellationToken),
+            "Wolfram"     => await _wolfram.ProcessAsync(documentTitle, request, cancellationToken),
             "Gemini"      => await _gemini.ProcessAsync(documentTitle, request, cancellationToken),
             _             => await _gemini.ProcessAsync(documentTitle, request, cancellationToken)
         };

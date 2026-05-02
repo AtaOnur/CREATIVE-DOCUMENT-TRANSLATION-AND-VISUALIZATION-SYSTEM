@@ -65,17 +65,32 @@
 
             <div class="vr mx-1"></div>
 
-            <button type="button" class="btn btn-sm btn-outline-primary" id="btn-start-selection">Bolge Secimi Baslat</button>
-            <button type="button" class="btn btn-sm btn-success" id="btn-confirm-selection" disabled>Secimi Onayla</button>
-            <button type="button" class="btn btn-sm btn-outline-danger" id="btn-cancel-selection" disabled>Secimi Iptal Et</button>
+            @* [TR] Bölge seçimi her zaman aktif: PDF üzerinde sol fareye basılı tutarak sürükle.
+               Eski "Bölge Seçimi Başlat / Onayla / İptal" düğmeleri kaldırıldı; bunun yerine
+               kısa bir kullanım ipucu ve seçimi temizlemek için tek bir buton bırakıldı. *@
+            <span class="small text-muted">
+                <strong>İpucu:</strong> PDF üzerinde sürükleyerek bölge seç.
+            </span>
+            <button type="button" class="btn btn-sm btn-outline-danger ms-auto" id="btn-cancel-selection" disabled>Seçimi Temizle</button>
         </div>
 
         <div class="workspace-body d-flex flex-column flex-lg-row">
             <div class="workspace-viewer-area flex-grow-1 p-3">
-                <div class="workspace-viewer-frame mx-auto" id="workspace-viewer-frame">
-                    <canvas id="pdf-canvas" class="workspace-pdf-canvas"></canvas>
-                    <div id="region-overlay" class="workspace-region-overlay"></div>
-                    <div id="region-rect" class="workspace-region-rect d-none"></div>
+                @*
+                    [TR] Canvas + overlay + seçim dikdörtgeni ayrı bir wrap içinde tutulur.
+                    Sebep: Zoom ile canvas büyüdüğünde frame (scroll konteyneri) olduğu gibi
+                    kalır ama wrap (içerik) büyür. Böylece kullanıcı her yöne (yukarı/aşağı/
+                    sol/sağ) kaydırabilir. Overlay ve rect wrap içinde absolute positioned
+                    olduğu için, koordinatlar wrap'in sol-üst köşesine göre tutarlıdır —
+                    eski "center + transform" yaklaşımında koordinatlar kayarken şimdi
+                    rect tam mouse'un olduğu yerden başlar.
+                *@
+                <div class="workspace-viewer-frame" id="workspace-viewer-frame">
+                    <div class="workspace-viewer-canvas-wrap" id="workspace-viewer-canvas-wrap">
+                        <canvas id="pdf-canvas" class="workspace-pdf-canvas"></canvas>
+                        <div id="region-overlay" class="workspace-region-overlay"></div>
+                        <div id="region-rect" class="workspace-region-rect d-none"></div>
+                    </div>
                 </div>
                 <div id="workspace-viewer-warning" class="alert alert-info mt-3 d-none">
                     Bu PDF, dahili goruntuleyicide bos gorunuyor olabilir. Native PDF onizlemeyi acabilirsiniz.
@@ -110,8 +125,40 @@
                 </dl>
 
                 @* OCR dil seçimi kaldırıldı; PaddleOCR dili otomatik algılar *@
-                <button type="button" class="btn btn-accent w-100 mb-3" id="btn-extract-text" disabled>Metni Çıkar</button>
+                @*
+                    [TR] İki aksiyon yan yana:
+                    - "Metni Çıkar"  → seçili bölge üzerinde OCR yapar (mevcut akış).
+                    - "Görsel Seç"  → seçili bölgeyi PNG olarak yakalar; AI'ya prompt
+                                       ile birlikte multimodal girdi olarak gönderilir.
+
+                    [TR] OCR Motoru seçimi: kullanıcı her istek için Tesseract veya
+                    PaddleOCR kullanmayı seçebilir. Varsayılan appsettings → Ocr:Provider'dır.
+                *@
+                <div class="mb-2">
+                    <label class="form-label small mb-1" for="ocr-engine">OCR Motoru</label>
+                    <select id="ocr-engine" class="form-select form-select-sm">
+                        <option value="Tesseract">Tesseract (Hızlı, kurulumu kolay)</option>
+                        <option value="Paddle">PaddleOCR (Daha doğru, çok dilli)</option>
+                    </select>
+                </div>
+                <div class="d-grid gap-2 mb-2">
+                    <button type="button" class="btn btn-accent" id="btn-extract-text" disabled>Metni Çıkar</button>
+                    <button type="button" class="btn btn-outline-primary" id="btn-select-image" disabled>Görsel Seç</button>
+                </div>
                 <div id="ocr-status" class="small mb-2 d-none"></div>
+
+                @* [TR] "Görsel Seç" ile yakalanan bölgenin önizlemesi.
+                       Görsel varken AI isteğine multimodal olarak eklenir. *@
+                <div id="captured-image-panel" class="mb-3 d-none">
+                    <div class="d-flex justify-content-between align-items-center mb-1">
+                        <label class="form-label small fw-medium mb-0">Yakalanan Görsel</label>
+                        <button type="button" class="btn btn-link btn-sm p-0 text-danger" id="btn-clear-captured-image">Kaldır</button>
+                    </div>
+                    <img id="captured-image-preview" alt="Yakalanan bölge" class="img-fluid rounded border" />
+                    <div class="small text-muted mt-1">
+                        AI işlemi sırasında bu görsel prompt ile birlikte modele gönderilecek.
+                    </div>
+                </div>
 
                 <label for="ocr-text-placeholder" class="form-label small fw-medium">OCR Metni (duzenlenebilir)</label>
                 <textarea id="ocr-text-placeholder"
@@ -133,6 +180,12 @@
                         <option value="Rewrite">Rewrite</option>
                         <option value="CreativeWrite">Creative Write</option>
                         <option value="Visualize">Visualize</option>
+                        @* [TR] Math: bar grafik / fonksiyon grafiği görseli (Gemini görsel) veya Wolfram Alpha ile çözüm+grafik *@
+                        <option value="Math">Math / Grafik</option>
+                        @* [TR] Explanation: Seçili metni ve/veya "Görsel Seç" ile yakalanmış görseli
+                                analiz eder; içeriğin ne olduğunu, içinde ne barındırdığını ve mümkünse
+                                anlamlı çıkarımları kullanıcıya açıklar. Multimodal (Gemini) önerilir. *@
+                        <option value="Explanation">Explanation</option>
                     </select>
                 </div>
                 <div class="mb-2">
@@ -202,11 +255,35 @@
                 </div>
                 <button type="button" class="btn btn-dark w-100 mb-2" id="btn-ai-process">AI ile Isle</button>
                 <div id="ai-status" class="small mb-2 d-none"></div>
-                <div id="ai-preview" class="alert alert-light border small mb-0 d-none"></div>
                 <div class="small mt-2">
                     <a id="ai-result-link" class="link-primary d-none" href="#">Detayli sonuc sayfasini ac</a>
                 </div>
             </aside>
+        </div>
+    </div>
+
+    @*
+        [TR] AI Sohbet alanı — WhatsApp tarzı mesaj balonları.
+        Workspace kartının altında, tüm sayfanın genişliği boyunca yer alır.
+        Kullanıcı "AI ile İşle" tıkladığında:
+            1) Gönderilen içerik (metin/görsel + opsiyonel prompt) sağ tarafta
+               yeşil balon olarak gösterilir; balonun altında seçilen options
+               (operation, model, style) "reaction chip" olarak çizilir.
+            2) AI yanıtı sol tarafta beyaz/gri balon olarak eklenir.
+        İçerik kendi içinde dikey olarak kaydırılabilir (max-height + overflow).
+    *@
+    <div class="ai-chat-section card border-0 shadow-sm mt-4">
+        <div class="ai-chat-header d-flex justify-content-between align-items-center px-3 py-2 border-bottom">
+            <h2 class="h6 fw-bold mb-0">AI Sohbet</h2>
+            <div class="d-flex gap-2 align-items-center">
+                <span class="small text-muted" id="ai-chat-count">0 mesaj</span>
+                <button type="button" class="btn btn-sm btn-outline-secondary" id="btn-clear-chat" title="Sohbeti temizle">Temizle</button>
+            </div>
+        </div>
+        <div class="ai-chat-window" id="ai-chat-window" aria-live="polite">
+            <div class="ai-chat-empty text-center text-muted small p-4" id="ai-chat-empty">
+                Henüz mesaj yok. Bir bölge seçip "AI ile İşle" tıklayın — gönderdiğiniz içerik ve AI yanıtı burada görünecek.
+            </div>
         </div>
     </div>
 </div>

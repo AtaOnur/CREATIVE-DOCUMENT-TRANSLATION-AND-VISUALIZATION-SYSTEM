@@ -23,5 +23,20 @@ public class OcrExtractRequestViewModel
     /// null/boş ise appsettings varsayılanı kullanılır.
     /// </summary>
     public string? Language { get; set; }
+
+    /// <summary>
+    /// [TR] Kullanıcının UI'dan seçtiği OCR motoru. "Tesseract" veya "Paddle".
+    /// null/boş ise appsettings → Ocr:Provider varsayılanı kullanılır.
+    /// </summary>
+    public string? Engine { get; set; }
+
+    /// <summary>
+    /// [TR] Tarayıcıdan gelen, seçili PDF bölgesinin önceden kırpılmış PNG'si (base64).
+    /// "data:image/png;base64,..." prefix'i olabilir veya saf base64 olabilir.
+    /// Bu alan dolu ise sunucu pdftoppm/Poppler ile sayfa rasterleme adımını
+    /// atlar ve OCR motoruna doğrudan bu görseli iletir. Böylece Poppler/pdftoppm
+    /// kurulumu gerekmez.
+    /// </summary>
+    public string? ImageBase64 { get; set; }
 }
 

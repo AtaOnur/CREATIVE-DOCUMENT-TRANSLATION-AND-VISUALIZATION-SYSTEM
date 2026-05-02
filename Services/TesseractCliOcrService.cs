@@ -102,6 +102,61 @@ public class TesseractCliOcrService : IOcrService
     }
 
     /// <summary>
+    /// [TR] Tarayıcıdan gelen, önceden kırpılmış PNG/JPEG üzerinde Tesseract OCR çalıştırır.
+    /// Bu yol pdftoppm bağımlılığını ortadan kaldırır.
+    /// </summary>
+    public async Task<string> ExtractFromImageBytesAsync(
+        byte[] imageBytes,
+        string documentTitle,
+        string? language = null,
+        CancellationToken cancellationToken = default)
+    {
+        if (imageBytes == null || imageBytes.Length == 0)
+            throw new InvalidOperationException("OCR için görüntü baytları boş.");
+
+        var ocrCfg = _config.GetSection("Ocr");
+        var tesseractPath = ocrCfg["TesseractPath"] ?? "tesseract";
+        var effectiveLang = !string.IsNullOrWhiteSpace(language) ? language : (ocrCfg["Language"] ?? "tur+eng");
+
+        var tempRoot = Path.Combine(_env.ContentRootPath, "Data", "tmp-ocr");
+        Directory.CreateDirectory(tempRoot);
+
+        var key = Guid.NewGuid().ToString("N");
+        var imgPath = Path.Combine(tempRoot, $"ocr_img_{key}.png");
+        var outBase = Path.Combine(tempRoot, $"ocr_img_{key}_out");
+        var outTxt = $"{outBase}.txt";
+
+        try
+        {
+            await File.WriteAllBytesAsync(imgPath, imageBytes, cancellationToken);
+
+            await RunProcessAsync(
+                tesseractPath,
+                $"\"{imgPath}\" \"{outBase}\" -l {effectiveLang}",
+                cancellationToken);
+
+            if (!File.Exists(outTxt))
+                throw new InvalidOperationException("Tesseract çıktı dosyası üretilemedi.");
+
+            var text = await File.ReadAllTextAsync(outTxt, cancellationToken);
+            if (string.IsNullOrWhiteSpace(text))
+                text = "[Tesseract OCR] Metin tespit edilemedi veya bölge boş.";
+
+            return text.Trim();
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Tesseract OCR (image) hatası. Doküman: {Document}", documentTitle);
+            throw;
+        }
+        finally
+        {
+            TryDelete(imgPath);
+            TryDelete(outTxt);
+        }
+    }
+
+    /// <summary>
     /// [TR] Seçili bölge koordinatına göre sayfa görüntüsünden crop alır.
     /// </summary>
     private static void CropRegion(string sourcePng, string destPng, RegionSelectionViewModel region)

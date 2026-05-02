@@ -1,14 +1,21 @@
 /*
  * [TR] Bu dosya ne işe yarar: Workspace istemci davranışı — PDF render, sayfa/zoom kontrolü, dikdörtgen seçim overlay.
  * [TR] Neden gerekli: Details ekranını üretken bir çalışma alanına dönüştürür.
- * [TR] Kapsam: OCR bölge seçimi + AI panel tetikleme (çeviri/özet/rewrite/creative/visualize) mock akışı.
+ * [TR] Kapsam: OCR bölge seçimi + "Görsel Seç" (multimodal AI girdi) + AI panel tetikleme.
+ *
+ * SEÇİM AKIŞI (yeni):
+ *   1. Kullanıcı PDF üzerinde sol fareye basılı tutup sürükler → dikdörtgen
+ *      sınırları çizilir (otomatik OCR yapılmaz, sadece sınırlar gösterilir).
+ *   2. "Metni Çıkar"  → mevcut OCR akışı (PaddleOCR servisi).
+ *   3. "Görsel Seç"   → seçili bölge canvas'tan kırpılarak base64 PNG'ye çevrilir;
+ *                       önizlemesi yan panelde gösterilir ve AI isteğine
+ *                       inputImageBase64 olarak iliştirilir.
  *
  * MODIFICATION NOTES (TR)
  * - Çoklu seçim için selection listesi ve çizim katmanı genişletilebilir.
  * - Tam sayfa OCR ve annotation araçları eklenebilir.
  * - Metin overlay (textLayer) ileride açılabilir.
- * - Genel resimden metin çıkarma özelliği bu sürümde bulunmamaktadır; future work olarak düşünülmüştür.
- * - Genel image-to-text işlemi bu modülün kapsamında değildir.
+ * - Görsel sıkıştırma (JPEG kalite ayarı) büyük bölgeler için eklenebilir.
  * - Zorluk: Orta.
  */
 import * as pdfjsLib from "/lib/pdfjs/pdf.min.mjs";
@@ -49,13 +56,22 @@ const btnZoomIn = document.getElementById("btn-zoom-in");
 const btnZoomOut = document.getElementById("btn-zoom-out");
 const btnFit = document.getElementById("btn-fit-width");
 
-const btnStartSelection = document.getElementById("btn-start-selection");
-const btnConfirmSelection = document.getElementById("btn-confirm-selection");
+// [TR] Eski "Bölge Seçimi Başlat / Onayla" düğmeleri kaldırıldı.
+//      Yalnızca "Seçimi Temizle" + yeni "Görsel Seç" butonları var.
 const btnCancelSelection = document.getElementById("btn-cancel-selection");
 const btnExtract = document.getElementById("btn-extract-text");
+const btnSelectImage = document.getElementById("btn-select-image");
 const btnSaveOcrText = document.getElementById("btn-save-ocr-text");
 const ocrTextarea = document.getElementById("ocr-text-placeholder");
 const ocrStatus = document.getElementById("ocr-status");
+
+// [TR] Görsel önizleme paneli ve "Kaldır" butonu (Görsel Seç ile yakalanan PNG).
+const capturedImagePanel = document.getElementById("captured-image-panel");
+const capturedImagePreview = document.getElementById("captured-image-preview");
+const btnClearCapturedImage = document.getElementById("btn-clear-captured-image");
+
+// [TR] OCR motoru seçici (Tesseract / PaddleOCR). Sunucuya request.Engine olarak gönderilir.
+const ocrEngineSelect = document.getElementById("ocr-engine");
 // [TR] OCR dil seçimi kaldırıldı; PaddleOCR varsayılan (en/Latin) modeli kullanır.
 
 const aiOperation = document.getElementById("ai-operation");
@@ -67,8 +83,14 @@ const aiStyle = document.getElementById("ai-style");
 const aiInstruction = document.getElementById("ai-instruction");
 const btnAiProcess = document.getElementById("btn-ai-process");
 const aiStatus = document.getElementById("ai-status");
-const aiPreview = document.getElementById("ai-preview");
 const aiResultLink = document.getElementById("ai-result-link");
+
+// [TR] WhatsApp tarzı sohbet alanı — mesajlar burada görüntülenir.
+const chatWindow = document.getElementById("ai-chat-window");
+const chatEmpty = document.getElementById("ai-chat-empty");
+const chatCount = document.getElementById("ai-chat-count");
+const btnClearChat = document.getElementById("btn-clear-chat");
+let chatMessageCount = 0;
 
 const elPage = document.getElementById("region-page");
 const elX = document.getElementById("region-x");
@@ -80,11 +102,14 @@ let pdfDoc = null;
 let currentPage = Number(shell.dataset.currentPage || "1");
 let zoom = Number(shell.dataset.zoom || "100") / 100;
 
-let selectionMode = false;
+// [TR] Bölge seçimi her zaman aktif; ayrı bir "selection mode" toggle'ına ihtiyaç yok.
 let drawing = false;
 let startX = 0;
 let startY = 0;
 let currentRect = null;
+
+// [TR] "Görsel Seç" ile yakalanmış bölge (base64 PNG). AI isteğinde gönderilir.
+let capturedImage = null; // { base64: string (no data: prefix), mimeType: "image/png" }
 
 function showFallbackWarning() {
   if (warning) warning.classList.remove("d-none");
@@ -111,12 +136,12 @@ function setRegionInfo(region) {
 }
 
 function setSelectionUi() {
-  overlay.classList.toggle("workspace-region-overlay--active", selectionMode);
-  btnStartSelection.textContent = selectionMode ? "Secim Aktif" : "Bolge Secimi Baslat";
-  btnConfirmSelection.disabled = !currentRect;
-  btnCancelSelection.disabled = !selectionMode && !currentRect;
-  btnExtract.disabled = !currentRect;
-  if (!currentRect && !lastOcrResultId) {
+  // [TR] Seçim her zaman aktif; ilgili düğmeler yalnızca seçim olup olmadığına göre aç/kapa.
+  const hasSelection = !!currentRect;
+  if (btnCancelSelection) btnCancelSelection.disabled = !hasSelection;
+  if (btnExtract) btnExtract.disabled = !hasSelection;
+  if (btnSelectImage) btnSelectImage.disabled = !hasSelection;
+  if (!hasSelection && !lastOcrResultId && btnSaveOcrText) {
     btnSaveOcrText.disabled = true;
   }
 }
@@ -137,6 +162,271 @@ function setAiStatus(type, message) {
   else if (type === "error") aiStatus.classList.add("text-danger");
   else aiStatus.classList.add("text-muted");
   aiStatus.textContent = message;
+}
+
+// ─── SOHBET YARDIMCILARI ─────────────────────────────────────────────────────
+// [TR] Mesaj balonlarını WhatsApp tarzında ekler/yöneten yardımcılar.
+//      Kullanıcı mesajı: yakalanan görsel + (varsa) gönderilen metin + (varsa)
+//      kullanıcı promptu (ayırıcıdan sonra) + altında reaction chip'leri.
+//      AI mesajı: cevap metni + (varsa) cevap görseli.
+
+function escapeHtml(s) {
+  if (s == null) return "";
+  return String(s)
+    .replaceAll("&", "&amp;")
+    .replaceAll("<", "&lt;")
+    .replaceAll(">", "&gt;")
+    .replaceAll('"', "&quot;")
+    .replaceAll("'", "&#39;");
+}
+
+function ensureChatVisible() {
+  if (chatEmpty && !chatEmpty.classList.contains("d-none")) {
+    chatEmpty.classList.add("d-none");
+  }
+}
+
+function updateChatCount() {
+  if (chatCount) chatCount.textContent = `${chatMessageCount} mesaj`;
+}
+
+function scrollChatToBottom() {
+  if (chatWindow) chatWindow.scrollTop = chatWindow.scrollHeight;
+}
+
+// [TR] Uzun mesaj balonları için kısaltılmış metin + "Devamını göster" kutusu.
+//      Eşik: ~500 karakter VEYA ~6 satır. Eşiği aşan metin
+//      .ai-chat-bubble-text--collapsible sınıfıyla kısıtlanır ve kullanıcı
+//      butona basınca .is-expanded ile tam metin açılır.
+const COLLAPSE_CHAR_THRESHOLD = 500;
+const COLLAPSE_LINE_THRESHOLD = 6;
+
+function shouldCollapseText(text) {
+  if (!text) return false;
+  if (text.length > COLLAPSE_CHAR_THRESHOLD) return true;
+  const lines = text.split("\n").length;
+  return lines > COLLAPSE_LINE_THRESHOLD;
+}
+
+function renderCollapsibleText(text, { muted = false } = {}) {
+  const safe = escapeHtml(text);
+  if (!shouldCollapseText(text)) {
+    const cls = muted ? "ai-chat-bubble-text text-muted" : "ai-chat-bubble-text";
+    return `<p class="${cls}">${safe}</p>`;
+  }
+  const cls = muted
+    ? "ai-chat-bubble-text ai-chat-bubble-text--collapsible text-muted"
+    : "ai-chat-bubble-text ai-chat-bubble-text--collapsible";
+  // [TR] Toggle mantığı DOM inşa edildikten sonra event delegation ile takılır
+  //      (bkz. attachShowMoreHandler). İlk durumda collapsed, buton "Devamını göster"
+  return (
+    `<p class="${cls}">${safe}</p>` +
+    `<button type="button" class="ai-chat-show-more" data-role="chat-show-more">Devamını göster</button>`
+  );
+}
+
+// [TR] Tek bir event delegation: chat-window içindeki "Devamını göster" butonları
+//      hep aynı davranır → bir kere takılır, yeni eklenen balonlarda da çalışır.
+function attachShowMoreHandler() {
+  if (!chatWindow || chatWindow.dataset.showMoreBound === "1") return;
+  chatWindow.dataset.showMoreBound = "1";
+  chatWindow.addEventListener("click", (ev) => {
+    const btn = ev.target?.closest?.('[data-role="chat-show-more"]');
+    if (!btn) return;
+    const bubble = btn.previousElementSibling;
+    if (!bubble?.classList?.contains("ai-chat-bubble-text--collapsible")) return;
+    const expanded = bubble.classList.toggle("is-expanded");
+    btn.textContent = expanded ? "Daha az göster" : "Devamını göster";
+    // Expanded değişince scroll durumu bozulmasın — kullanıcı zaten balonun
+    // başında değilse sohbeti olduğu yerde tut.
+  });
+}
+
+// ─── AI SOHBET: BELGE BAŞINA YEREL SAKLAMA (localStorage) ────────────────────
+// [TR] "Detaylı sonucu aç" ile başka sayfaya gidip geri gelindiğinde veya sayfa
+//      yenilendiğinde sohbet sıfırlanmasın diye tamamlanmış mesaj balonları
+//      tarayıcıda documentId anahtarıyla saklanır. Yalnızca "Temizle" ile silinir.
+//      İhlali tamamlanmamış "yazıyor..." balonları kaydedilmez (filtre).
+const AI_CHAT_STORAGE_PREFIX = "pdf_bitirme_ai_chat_v1";
+
+function getAiChatStorageKey() {
+  return `${AI_CHAT_STORAGE_PREFIX}:${documentId}`;
+}
+
+function persistAiChat() {
+  if (!documentId || !chatWindow) return;
+  const msgs = [...chatWindow.querySelectorAll(".ai-chat-message")].filter(
+    (n) => !n.querySelector(".ai-chat-typing")
+  );
+  const html = msgs.map((n) => n.outerHTML).join("");
+  try {
+    const key = getAiChatStorageKey();
+    if (!html.trim()) {
+      localStorage.removeItem(key);
+      return;
+    }
+    localStorage.setItem(key, JSON.stringify({ v: 1, html }));
+  } catch (e) {
+    console.warn("AI sohbet yerel depoya yazılamadı:", e);
+  }
+}
+
+function restoreAiChat() {
+  if (!documentId || !chatWindow) return;
+  let raw = null;
+  try {
+    raw = localStorage.getItem(getAiChatStorageKey());
+  } catch {
+    return;
+  }
+  if (!raw) return;
+  let data = null;
+  try {
+    data = JSON.parse(raw);
+  } catch {
+    return;
+  }
+  if (!data || typeof data.html !== "string" || !data.html.trim()) return;
+
+  chatWindow.innerHTML = data.html;
+  chatMessageCount = chatWindow.querySelectorAll(".ai-chat-message").length;
+  updateChatCount();
+  scrollChatToBottom();
+}
+
+function buildReactionChips(reactions) {
+  if (!reactions || reactions.length === 0) return "";
+  const items = reactions
+    .filter((r) => r && r.label)
+    .map((r) => {
+      const cls = r.kind ? `ai-chat-reaction--${r.kind}` : "";
+      return `<span class="ai-chat-reaction ${cls}">${escapeHtml(r.label)}</span>`;
+    })
+    .join("");
+  return `<div class="ai-chat-reactions">${items}</div>`;
+}
+
+// [TR] Kullanıcı mesajı ekle. Görsel ve/veya metin + opsiyonel prompt + reactions.
+function appendUserMessage({ imageDataUrl, contentText, prompt, reactions }) {
+  if (!chatWindow) return null;
+  ensureChatVisible();
+
+  const wrap = document.createElement("div");
+  wrap.className = "ai-chat-message ai-chat-message--user";
+
+  const inner = [];
+  inner.push('<div class="ai-chat-bubble-wrap">');
+  inner.push('<div class="ai-chat-bubble">');
+
+  // [TR] Önce görsel (varsa).
+  if (imageDataUrl) {
+    inner.push(`<img src="${imageDataUrl}" alt="Gönderilen görsel" />`);
+  }
+
+  // [TR] Sonra metin (görsel/OCR/serbest metin) — uzunsa "Devamını göster" ile kısalt.
+  if (contentText && contentText.trim().length > 0) {
+    if (imageDataUrl) inner.push('<div style="height:0.45rem"></div>');
+    inner.push(renderCollapsibleText(contentText));
+  } else if (!imageDataUrl) {
+    inner.push('<p class="ai-chat-bubble-text text-muted"><em>(içerik yok)</em></p>');
+  }
+
+  // [TR] Promptu kesik çizgiyle ayır ve "PROMPT:" etiketi ile göster.
+  if (prompt && prompt.trim().length > 0) {
+    inner.push('<hr class="ai-chat-divider" />');
+    inner.push('<div class="ai-chat-prompt-label">Prompt</div>');
+    inner.push(renderCollapsibleText(prompt));
+  }
+
+  inner.push("</div>"); // bubble
+  inner.push(buildReactionChips(reactions));
+  inner.push("</div>"); // bubble-wrap
+
+  wrap.innerHTML = inner.join("");
+  chatWindow.appendChild(wrap);
+  chatMessageCount += 1;
+  updateChatCount();
+  attachShowMoreHandler();
+  persistAiChat();
+  scrollChatToBottom();
+  return wrap;
+}
+
+// [TR] AI yazıyor... bekleme balonu — istek tamamlandığında kaldırılır/ değiştirilir.
+function appendAiTypingPlaceholder() {
+  if (!chatWindow) return null;
+  ensureChatVisible();
+
+  const wrap = document.createElement("div");
+  wrap.className = "ai-chat-message ai-chat-message--ai";
+  wrap.innerHTML = `
+    <div class="ai-chat-bubble-wrap">
+      <div class="ai-chat-bubble">
+        <span class="ai-chat-typing"><span></span><span></span><span></span></span>
+      </div>
+    </div>`;
+  chatWindow.appendChild(wrap);
+  scrollChatToBottom();
+  return wrap;
+}
+
+// [TR] Bekleme balonunu gerçek AI cevabıyla değiştir veya yeni bir balon ekle.
+function replaceWithAiMessage(typingNode, { text, imageUrl, isError, resultUrl }) {
+  const wrap = typingNode || (() => {
+    const el = document.createElement("div");
+    el.className = "ai-chat-message ai-chat-message--ai";
+    chatWindow?.appendChild(el);
+    return el;
+  })();
+
+  const parts = [];
+  parts.push('<div class="ai-chat-bubble-wrap">');
+  parts.push(`<div class="ai-chat-bubble" ${isError ? 'style="background:#fee2e2;border-color:#fecaca;color:#7f1d1d"' : ""}>`);
+
+  if (text && text.trim().length > 0) {
+    parts.push(renderCollapsibleText(text));
+  }
+  if (imageUrl) {
+    if (text) parts.push('<div style="height:0.45rem"></div>');
+    parts.push(`<img src="${escapeHtml(imageUrl)}" alt="AI cevabı (görsel)" />`);
+  }
+  if (!text && !imageUrl) {
+    parts.push('<p class="ai-chat-bubble-text text-muted"><em>(boş cevap)</em></p>');
+  }
+
+  parts.push("</div>"); // bubble
+
+  if (resultUrl) {
+    parts.push(`<div class="ai-chat-meta"><a class="link-primary" href="${escapeHtml(resultUrl)}">Detaylı sonucu aç →</a></div>`);
+  }
+  parts.push("</div>"); // wrap
+
+  wrap.innerHTML = parts.join("");
+  chatMessageCount += 1;
+  updateChatCount();
+  attachShowMoreHandler();
+  persistAiChat();
+  scrollChatToBottom();
+  return wrap;
+}
+
+if (btnClearChat) {
+  btnClearChat.addEventListener("click", () => {
+    if (!chatWindow) return;
+    try {
+      localStorage.removeItem(getAiChatStorageKey());
+    } catch {
+      /* ignore */
+    }
+    chatWindow.innerHTML = "";
+    chatMessageCount = 0;
+    updateChatCount();
+    if (chatEmpty) {
+      const clone = chatEmpty.cloneNode(true);
+      clone.classList.remove("d-none");
+      chatWindow.appendChild(clone);
+    }
+  });
 }
 
 function clearDraftRect() {
@@ -169,19 +459,35 @@ function drawDraftRect(x1, y1, x2, y2) {
 }
 
 async function renderPage(pageNumber) {
-  const rendered = await renderPageFromServer(pageNumber);
-  if (!rendered && pdfDoc) {
-    const page = await pdfDoc.getPage(pageNumber);
-    const viewport = page.getViewport({ scale: zoom });
-    canvas.width = Math.floor(viewport.width);
-    canvas.height = Math.floor(viewport.height);
-    overlay.style.width = `${canvas.width}px`;
-    overlay.style.height = `${canvas.height}px`;
-    rect.style.maxWidth = `${canvas.width}px`;
-    rect.style.maxHeight = `${canvas.height}px`;
+  // [TR] Önce pdf.js (tarayıcı içi) ile render etmeyi dene — server tarafında
+  //      pdftoppm.exe bağımlılığı yok. pdf.js herhangi bir sebeple başarısız
+  //      olursa server tarafındaki PagePreview endpoint'ine düşeriz.
+  //      Bu sıra kullanıcının pdftoppm kurmadığı makinelerde 500 hatası atmayı
+  //      engeller (önceki davranış: önce server → her seferinde Win32Exception).
+  let rendered = false;
+  if (pdfDoc) {
+    try {
+      const page = await pdfDoc.getPage(pageNumber);
+      const viewport = page.getViewport({ scale: zoom });
+      canvas.width = Math.floor(viewport.width);
+      canvas.height = Math.floor(viewport.height);
+      // [TR] Overlay ve rect artık .workspace-viewer-canvas-wrap içinde
+      //      absolute positioned; overlay CSS'te width/height: 100% → canvas
+      //      boyutuyla otomatik senkronize. Rect'in JS'te maxWidth/maxHeight
+      //      atamasına da gerek yok çünkü wrap canvas kadar geniş.
+      rect.style.maxWidth = `${canvas.width}px`;
+      rect.style.maxHeight = `${canvas.height}px`;
 
-    const ctx = canvas.getContext("2d");
-    await page.render({ canvasContext: ctx, viewport }).promise;
+      const ctx = canvas.getContext("2d");
+      await page.render({ canvasContext: ctx, viewport }).promise;
+      rendered = true;
+    } catch (err) {
+      console.warn("pdf.js render hatası, server fallback denenecek:", err);
+    }
+  }
+
+  if (!rendered) {
+    await renderPageFromServer(pageNumber);
   }
 
   pageInput.value = String(currentPage);
@@ -209,8 +515,7 @@ async function renderPageFromServer(pageNumber) {
 
     canvas.width = img.width;
     canvas.height = img.height;
-    overlay.style.width = `${canvas.width}px`;
-    overlay.style.height = `${canvas.height}px`;
+    // [TR] Overlay boyutu CSS tarafından %100 ile yönetiliyor (wrap → canvas).
     rect.style.maxWidth = `${canvas.width}px`;
     rect.style.maxHeight = `${canvas.height}px`;
     const ctx = canvas.getContext("2d");
@@ -231,59 +536,70 @@ function normalizeMousePosition(evt) {
   };
 }
 
+// [TR] Sol fareye basıldığında bölge çizimi başlar — eski "Bölge Seçimi Başlat"
+//      modu kaldırıldı; selection her zaman aktiftir.
 overlay.addEventListener("mousedown", (evt) => {
-  if (!selectionMode) return;
+  if (evt.button !== 0) return; // sadece sol tık
   drawing = true;
   const p = normalizeMousePosition(evt);
   startX = p.x;
   startY = p.y;
   drawDraftRect(startX, startY, startX, startY);
   setSelectionUi();
+  // [TR] Sayfa içi metin/element seçimini engelle (sürükleme sırasında istenmeyen highlight).
+  evt.preventDefault();
 });
 
 window.addEventListener("mousemove", (evt) => {
-  if (!drawing || !selectionMode) return;
+  if (!drawing) return;
   const p = normalizeMousePosition(evt);
   drawDraftRect(startX, startY, p.x, p.y);
   setSelectionUi();
 });
 
 window.addEventListener("mouseup", () => {
+  if (!drawing) return;
   drawing = false;
-});
-
-btnStartSelection.addEventListener("click", () => {
-  selectionMode = !selectionMode;
+  // [TR] Çizim bittiğinde minik (yanlışlıkla) seçimleri at.
+  if (currentRect && (currentRect.width < 4 || currentRect.height < 4)) {
+    clearDraftRect();
+  }
   setSelectionUi();
 });
 
-btnConfirmSelection.addEventListener("click", () => {
-  if (!currentRect) return;
-  selectionMode = false;
-  setSelectionUi();
-  setRegionInfo({
-    pageNumber: currentRect.pageNumber,
-    x: currentRect.left,
-    y: currentRect.top,
-    width: currentRect.width,
-    height: currentRect.height,
+// [TR] "Seçimi Temizle" — bölgeyi ve panel bilgisini sıfırlar.
+//      Yakalanmış görsel ayrı yönetiliyor (bkz. btn-clear-captured-image).
+if (btnCancelSelection) {
+  btnCancelSelection.addEventListener("click", () => {
+    clearDraftRect();
+    setSelectionUi();
+    setRegionInfo(null);
   });
-});
+}
 
-btnCancelSelection.addEventListener("click", () => {
-  selectionMode = false;
-  clearDraftRect();
-  setSelectionUi();
-  setRegionInfo(null);
+// [TR] Klavye kısayolu: Esc ile aktif seçimi temizle.
+window.addEventListener("keydown", (evt) => {
+  if (evt.key === "Escape" && currentRect) {
+    clearDraftRect();
+    setSelectionUi();
+    setRegionInfo(null);
+  }
 });
 
 btnExtract.addEventListener("click", () => {
   if (!currentRect || !extractUrl || !documentId) return;
   const ow = overlay.clientWidth || canvas.width || 1;
   const oh = overlay.clientHeight || canvas.height || 1;
+  const selectedEngine = ocrEngineSelect ? ocrEngineSelect.value : null;
+
+  // [TR] Tarayıcı, render edilmiş canvas'tan seçili bölgeyi kırpıp PNG olarak gönderir.
+  //      Böylece sunucu pdftoppm/Poppler kurulumuna ihtiyaç duymaz; OCR motoru
+  //      görüntüyü doğrudan alır. captureSelectionAsImage() "Görsel Seç" ile
+  //      aynı yardımcıyı kullanır (DPI ölçeği, sınır kontrolü).
+  const cropped = captureSelectionAsImage();
+
   const payload = {
     documentId,
-    // [TR] OCR dil seçimi kaldırıldı; PaddleOCR otomatik algılar.
     region: {
       pageNumber: currentRect.pageNumber,
       x: currentRect.left / ow,
@@ -291,10 +607,14 @@ btnExtract.addEventListener("click", () => {
       width: currentRect.width / ow,
       height: currentRect.height / oh,
     },
+    // [TR] Seçili OCR motoru: "Tesseract" veya "Paddle". Sunucu motora göre yönlendirir.
+    engine: selectedEngine,
+    // [TR] Önceden kırpılmış PNG; sunucu base64 prefix'ini de kabul eder.
+    imageBase64: cropped ? cropped.base64 : null,
   };
 
   btnExtract.disabled = true;
-  setOcrStatus("info", "OCR çalışıyor...");
+  setOcrStatus("info", `OCR çalışıyor... (${selectedEngine || "varsayılan"})`);
   fetch(extractUrl, {
     method: "POST",
     headers: {
@@ -319,6 +639,79 @@ btnExtract.addEventListener("click", () => {
       setSelectionUi();
     });
 });
+
+// ─── "GÖRSEL SEÇ" — SEÇİLİ BÖLGEYİ PNG OLARAK YAKALA ───────────────────────
+// [TR] Seçili dikdörtgenin canvas üzerindeki piksellerini ayrı bir canvas'a
+//      kırpıp base64 PNG'ye dönüştürür. Sonuç AI panelinde önizlenir ve
+//      "AI ile İşle" tıklandığında inputImageBase64 olarak gönderilir.
+//
+// JÜRI MODİFİKASYON NOTLARI (TR)
+// - Devicepixel oranı için ekstra ölçek uygulanmaz; canvas zaten render
+//   edilmiş piksel boyutuna sahip (server-side preview veya pdf.js).
+// - Çok büyük bölgelerde JPEG sıkıştırma + kalite parametresi eklenebilir.
+function showCapturedImagePreview(dataUrl) {
+  if (!capturedImagePanel || !capturedImagePreview) return;
+  capturedImagePreview.src = dataUrl;
+  capturedImagePanel.classList.remove("d-none");
+}
+
+function clearCapturedImage() {
+  capturedImage = null;
+  if (capturedImagePreview) capturedImagePreview.src = "";
+  if (capturedImagePanel) capturedImagePanel.classList.add("d-none");
+}
+
+function captureSelectionAsImage() {
+  if (!currentRect || !canvas) return null;
+
+  // [TR] Overlay (DOM piksel) ile canvas (gerçek piksel) farklı olabilir;
+  //      seçimi canvas piksellerine ölçeklemek için oranı hesapla.
+  const ow = overlay.clientWidth || canvas.width || 1;
+  const oh = overlay.clientHeight || canvas.height || 1;
+  const scaleX = canvas.width / ow;
+  const scaleY = canvas.height / oh;
+
+  const sx = Math.max(0, Math.round(currentRect.left * scaleX));
+  const sy = Math.max(0, Math.round(currentRect.top * scaleY));
+  const sw = Math.min(canvas.width - sx, Math.max(1, Math.round(currentRect.width * scaleX)));
+  const sh = Math.min(canvas.height - sy, Math.max(1, Math.round(currentRect.height * scaleY)));
+
+  const off = document.createElement("canvas");
+  off.width = sw;
+  off.height = sh;
+  const offCtx = off.getContext("2d");
+  if (!offCtx) return null;
+  offCtx.drawImage(canvas, sx, sy, sw, sh, 0, 0, sw, sh);
+
+  const dataUrl = off.toDataURL("image/png");
+  // [TR] data: prefix'ini ayır; sunucu sadece ham base64 + mimeType bekliyor.
+  const commaIdx = dataUrl.indexOf(",");
+  const base64 = commaIdx >= 0 ? dataUrl.slice(commaIdx + 1) : dataUrl;
+  return { base64, mimeType: "image/png", dataUrl };
+}
+
+if (btnSelectImage) {
+  btnSelectImage.addEventListener("click", () => {
+    if (!currentRect) {
+      setOcrStatus("error", "Önce PDF üzerinde bir bölge seçin.");
+      return;
+    }
+    const captured = captureSelectionAsImage();
+    if (!captured) {
+      setOcrStatus("error", "Görsel yakalanamadı.");
+      return;
+    }
+    capturedImage = { base64: captured.base64, mimeType: captured.mimeType };
+    showCapturedImagePreview(captured.dataUrl);
+    setOcrStatus("success", "Görsel yakalandı. AI ile İşle tıklayarak prompt ile gönderebilirsiniz.");
+  });
+}
+
+if (btnClearCapturedImage) {
+  btnClearCapturedImage.addEventListener("click", () => {
+    clearCapturedImage();
+  });
+}
 
 if (btnSaveOcrText) {
   btnSaveOcrText.disabled = !lastOcrResultId;
@@ -358,25 +751,68 @@ if (btnAiProcess) {
   btnAiProcess.addEventListener("click", () => {
     if (!aiProcessUrl || !documentId || !ocrTextarea) return;
     const inputText = (ocrTextarea.value || "").trim();
-    if (!inputText) {
-      setAiStatus("error", "Önce OCR metni üretin veya metin kutusuna içerik girin.");
+    const customInstruction = (aiInstruction?.value || "").trim();
+    const hasImage = !!capturedImage;
+
+    // [TR] Eskiden sadece OCR metni zorunluydu. Artık üç kaynaktan biri yeterli:
+    //      1) OCR/serbest metin, 2) "Görsel Seç" ile yakalanmış görsel, veya
+    //      3) "Özel Yönerge" alanına yazılmış prompt.
+    if (!inputText && !hasImage && !customInstruction) {
+      setAiStatus(
+        "error",
+        "OCR metni, yakalanmış bir görsel veya özel yönerge gerekli."
+      );
       return;
     }
 
+    const operation = aiOperation?.value || "Translate";
+    const model = aiModel?.value || "mock-gpt";
+    const style = aiStyle?.value || "Formal";
+    const targetLang = aiTargetLanguage?.value || "English";
+
     const payload = {
       documentId,
-      operationType: aiOperation?.value || "Translate",
-      modelName: aiModel?.value || "mock-gpt",
+      operationType: operation,
+      modelName: model,
       // [TR] Kaynak dil kaldırıldı; AI prompt'unda kaynak dil "otomatik algıla" olarak geçer.
-      targetLanguage: aiTargetLanguage?.value || "English",
-      style: aiStyle?.value || "Formal",
-      customInstruction: aiInstruction?.value || "",
+      targetLanguage: targetLang,
+      style,
+      customInstruction,
       inputText,
       sourcePageNumber: currentRect?.pageNumber || currentPage,
+      // [TR] "Görsel Seç" ile yakalanmış görsel varsa multimodal input olarak ekle.
+      //      Sunucu (Gemini) bu alanı inlineData (mimeType + data) olarak Gemini API'ye iletir.
+      inputImageBase64: hasImage ? capturedImage.base64 : null,
+      inputImageMimeType: hasImage ? capturedImage.mimeType : null,
     };
 
+    // ─── KULLANICI MESAJI: sohbet alanına ekle ─────────────────────────────
+    // [TR] Reaction chip'ler: WhatsApp emoji reaksiyonları gibi balon altında
+    //      görünür. Operation + Model + Style (+ Translate ise Hedef Dil) ekle.
+    //      Görsel önizlemesi için Görsel Seç balonundaki dataUrl kullanılır;
+    //      o yüzden aşağıda capturedImagePreview.src tercih edilir.
+    const reactions = [
+      { kind: "operation", label: operation },
+      { kind: "model",     label: model },
+      { kind: "style",     label: style },
+    ];
+    if (operation === "Translate") {
+      reactions.push({ kind: "lang", label: `→ ${targetLang}` });
+    }
+
+    const userImageDataUrl = hasImage && capturedImagePreview ? capturedImagePreview.src : null;
+
+    appendUserMessage({
+      imageDataUrl: userImageDataUrl,
+      contentText: inputText,
+      prompt: customInstruction,
+      reactions,
+    });
+
+    // ─── AI mesajı için "yazıyor..." balonu ekle ───────────────────────────
+    const typingNode = appendAiTypingPlaceholder();
+
     btnAiProcess.disabled = true;
-    if (aiPreview) aiPreview.classList.add("d-none");
     if (aiResultLink) aiResultLink.classList.add("d-none");
     setAiStatus("info", "AI işlemi çalışıyor...");
 
@@ -392,23 +828,30 @@ if (btnAiProcess) {
       .then((res) => {
         if (!res.ok) {
           setAiStatus("error", res.message || "AI işlemi başarısız.");
+          replaceWithAiMessage(typingNode, {
+            text: res.message || "AI işlemi başarısız.",
+            isError: true,
+          });
           return;
         }
         setAiStatus("success", res.message || "AI işlemi tamamlandı.");
-        if (aiPreview) {
-          const previewText = res.outputText || "";
-          const imageHtml = res.outputImageUrl
-            ? `<div class="mt-2"><img src="${res.outputImageUrl}" alt="AI visualize preview" class="img-fluid rounded border" /></div>`
-            : "";
-          aiPreview.innerHTML = `<strong>Onizleme</strong><br/>${previewText}${imageHtml}`;
-          aiPreview.classList.remove("d-none");
-        }
+        replaceWithAiMessage(typingNode, {
+          text: res.outputText || "",
+          imageUrl: res.outputImageUrl || null,
+          resultUrl: res.resultUrl || null,
+        });
         if (aiResultLink && res.resultUrl) {
           aiResultLink.href = res.resultUrl;
           aiResultLink.classList.remove("d-none");
         }
       })
-      .catch(() => setAiStatus("error", "AI isteği sırasında hata oluştu."))
+      .catch(() => {
+        setAiStatus("error", "AI isteği sırasında hata oluştu.");
+        replaceWithAiMessage(typingNode, {
+          text: "AI isteği sırasında hata oluştu.",
+          isError: true,
+        });
+      })
       .finally(() => {
         btnAiProcess.disabled = false;
       });
@@ -473,16 +916,25 @@ function syncTranslateLangsVisibility() {
   aiTranslateLangs.style.display = op === "Translate" ? "" : "none";
 }
 
+// [TR] Math işlemi seçiliyken OCR önizleme alanına matematik dostu tipografi (CSS).
+function syncMathOcrPreviewStyle() {
+  if (!ocrTextarea || !aiOperation) return;
+  const on = aiOperation.value === "Math";
+  ocrTextarea.classList.toggle("workspace-ocr-text-math", on);
+}
+
 if (aiOperation) {
   aiOperation.addEventListener("change", () => {
     // [TR] İşlem değiştiğinde: önce model listesi güncellenir, sonra dil seçici ayarlanır.
     loadModelsForTask(aiOperation.value);
     syncTranslateLangsVisibility();
+    syncMathOcrPreviewStyle();
   });
 }
 
 // Sayfa ilk yüklendiğinde de hizala
 syncTranslateLangsVisibility();
+syncMathOcrPreviewStyle();
 
 btnPrev.addEventListener("click", async () => {
   if (!pdfDoc || currentPage <= 1) return;
@@ -567,6 +1019,14 @@ async function init() {
     showFallbackWarning();
   }
 }
+
+// [TR] Sekme kapanmadan önce / başka sayfaya gidilirken son durumu yaz (geri tuşu vb.).
+window.addEventListener("pagehide", () => {
+  persistAiChat();
+});
+
+attachShowMoreHandler();
+restoreAiChat();
 
 init();
 

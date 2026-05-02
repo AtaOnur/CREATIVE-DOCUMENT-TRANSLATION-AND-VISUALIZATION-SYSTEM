@@ -80,7 +80,19 @@ public class HuggingFaceAiService : IAiService
         CancellationToken cancellationToken = default)
     {
         if (string.IsNullOrWhiteSpace(request.InputText))
+        {
+            if (string.Equals(request.OperationType, "Math", StringComparison.OrdinalIgnoreCase)
+                && !string.IsNullOrWhiteSpace(request.CustomInstruction))
+            {
+                return new AiServiceResult
+                {
+                    OutputText =
+                        "[Math için Gemini görsel model veya Wolfram Alpha seçin. HuggingFace bu işlemi desteklemez.]"
+                };
+            }
+
             return new AiServiceResult { OutputText = "[İşlenecek metin boş]" };
+        }
 
         try
         {
@@ -91,6 +103,15 @@ public class HuggingFaceAiService : IAiService
                 "Rewrite"       => await RewriteAsync(request, cancellationToken),
                 "CreativeWrite" => await CreativeWriteAsync(request, cancellationToken),
                 "Visualize"     => await VisualizeAsync(documentTitle, request, cancellationToken),
+                // [TR] Explanation: HuggingFace metin modelleri görsel almaz; sadece
+                //      verilen metni analiz ederek "ne anlatıyor / hangi tip içerik /
+                //      hangi veriler" gibi açıklayıcı çıktı verir.
+                "Explanation"   => await ExplainAsync(request, cancellationToken),
+                "Math" => new AiServiceResult
+                {
+                    OutputText =
+                        "[Math grafikleri için Gemini görsel model veya Wolfram Alpha seçin. Metin tabanlı HF modelleri uygun değildir.]"
+                },
                 _ => new AiServiceResult { OutputText = $"[Desteklenmeyen işlem: {request.OperationType}]" }
             };
         }
@@ -188,7 +209,41 @@ public class HuggingFaceAiService : IAiService
 
         var userPrompt = $"Instruction: {instruction}\n\nSource text:\n{request.InputText}";
 
-        return await CallChatAsync(request.ModelName!, systemPrompt, userPrompt, ct, maxTokens: 400);
+        return await CallChatAsync(request.ModelName!, systemPrompt, userPrompt, ct, maxTokens: 3000);
+    }
+
+    // ─── 4b. AÇIKLAMA / EXPLANATION ────────────────────────────────────────────
+    /*
+     * [TR] Verilen metni analitik olarak açıklar:
+     *        - İçerik türünü tespit et (öğrenci notları, hikâye, makale, sayısal veri vb.)
+     *        - İçeriği detaylı analiz et (sayım, gruplama, kahramanlar, dönem, vb.)
+     *        - Mümkünse anlamlı çıkarımlar ver
+     *
+     * [TR] HuggingFace metin LLM'leri görsel girdi almaz; bu yüzden burada görsel
+     *      iliştirilmiş olsa bile yalnız metin işlenir. Multimodal kullanım için
+     *      kullanıcı Gemini modellerinden birini seçmelidir.
+     */
+    private async Task<AiServiceResult> ExplainAsync(
+        AiProcessRequestViewModel request,
+        CancellationToken ct)
+    {
+        var instruction = string.IsNullOrWhiteSpace(request.CustomInstruction)
+            ? "(no extra instruction)"
+            : request.CustomInstruction!;
+
+        var input = request.InputText!.Length > 4000
+            ? request.InputText[..4000]
+            : request.InputText;
+
+        var systemPrompt =
+            "You are an analytical assistant. Explain the given text in Turkish: " +
+            "(1) identify the content type, (2) analyze it in detail (count groups/numbers, " +
+            "list characters/dates/places, describe data structure if any), " +
+            "(3) provide useful inferences. Use short paragraphs and bullet points when helpful.";
+
+        var userPrompt = $"User instruction (priority if any): {instruction}\n\nText to explain:\n{input}";
+
+        return await CallChatAsync(request.ModelName!, systemPrompt, userPrompt, ct, maxTokens: 3000);
     }
 
     // ─── 5. GÖRSEL ÜRETME ──────────────────────────────────────────────────────
@@ -297,7 +352,7 @@ public class HuggingFaceAiService : IAiService
         string systemPrompt,
         string userPrompt,
         CancellationToken ct,
-        int maxTokens = 1000)
+        int maxTokens = 4000)
     {
         var payload = new
         {

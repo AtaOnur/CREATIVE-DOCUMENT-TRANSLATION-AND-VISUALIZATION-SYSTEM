@@ -2,6 +2,7 @@ using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using pdf_bitirme.Models.ViewModels;
 using pdf_bitirme.Services;
+using pdf_bitirme.Services.Ocr;
 
 namespace pdf_bitirme.Controllers;
 
@@ -22,13 +23,71 @@ public class DocumentsController : Controller
 {
     private readonly IDocumentService _documentService;
     private readonly IOcrService _ocrService;
+    private readonly IServiceProvider _services;
     private readonly IConfiguration _configuration;
 
-    public DocumentsController(IDocumentService documentService, IOcrService ocrService, IConfiguration configuration)
+    public DocumentsController(
+        IDocumentService documentService,
+        IOcrService ocrService,
+        IServiceProvider services,
+        IConfiguration configuration)
     {
         _documentService = documentService;
         _ocrService = ocrService;
+        _services = services;
         _configuration = configuration;
+    }
+
+    /// <summary>
+    /// [TR] İstek gövdesinde belirtilen "Engine" değerine göre uygun OCR servisini döner.
+    /// Geçersiz/boş motor isteklerinde appsettings varsayılanı (_ocrService) kullanılır.
+    /// Windows dışı ortamlarda yine varsayılana düşer (concrete servisler kayıtlı değil).
+    /// </summary>
+    /// <summary>
+    /// [TR] İstemciden gelen base64 görsel verisini byte dizisine dönüştürür.
+    /// "data:image/png;base64,..." prefix'i varsa temizlenir; geçersiz/boş veri null döner.
+    /// </summary>
+    private static byte[]? TryDecodeImage(string? base64)
+    {
+        if (string.IsNullOrWhiteSpace(base64)) return null;
+        var raw = base64.Trim();
+        var commaIdx = raw.IndexOf(',');
+        if (raw.StartsWith("data:", StringComparison.OrdinalIgnoreCase) && commaIdx > 0)
+            raw = raw[(commaIdx + 1)..];
+        try
+        {
+            return Convert.FromBase64String(raw);
+        }
+        catch
+        {
+            return null;
+        }
+    }
+
+    private IOcrService ResolveOcrService(string? requestedEngine)
+    {
+        if (string.IsNullOrWhiteSpace(requestedEngine))
+            return _ocrService;
+
+        if (!OperatingSystem.IsWindows())
+            return _ocrService;
+
+        // [TR] PaddleOcrService / TesseractCliOcrService Windows-only sınıflar;
+        //      yukarıdaki IsWindows kontrolü ile koruma var, CA1416 pragma ile susturulur.
+#pragma warning disable CA1416
+        if (string.Equals(requestedEngine, "Paddle", StringComparison.OrdinalIgnoreCase))
+        {
+            var paddle = _services.GetService<PaddleOcrService>();
+            if (paddle != null) return paddle;
+        }
+        else if (string.Equals(requestedEngine, "Tesseract", StringComparison.OrdinalIgnoreCase))
+        {
+            var tess = _services.GetService<TesseractCliOcrService>();
+            if (tess != null) return tess;
+        }
+#pragma warning restore CA1416
+
+        return _ocrService;
     }
 
     /// <summary>Filtrelenebilir belge listesi.</summary>
@@ -170,18 +229,32 @@ public class DocumentsController : Controller
         if (workspace == null)
             return NotFound(new { ok = false, message = "Belge bulunamadı." });
 
-        var pdfPath = await _documentService.GetPdfPhysicalPathAsync(email, request.DocumentId, cancellationToken);
-        if (string.IsNullOrWhiteSpace(pdfPath))
-            return BadRequest(new { ok = false, message = "OCR için PDF dosya yolu bulunamadı." });
+        // [TR] Kullanıcı UI'da motor seçtiyse onu kullan; aksi halde appsettings varsayılanı.
+        var ocrService = ResolveOcrService(request.Engine);
 
         string text;
         try
         {
-            // [TR] OCR servisine dil kodunu ilet; null ise appsettings varsayılanı kullanılır.
-            text = await _ocrService.ExtractFromPdfRegionAsync(
-                pdfPath, workspace.Title, request.Region,
-                request.Language,
-                cancellationToken);
+            // [TR] Yeni akış: tarayıcı bölgeyi zaten kırpıp PNG olarak gönderdiyse
+            //      sayfayı pdftoppm ile rasterize etmeye gerek yok — Poppler bağımlılığı kalkar.
+            //      Bu, "pdftoppm bulunamadı" hatasını ortadan kaldırır.
+            var imageBytes = TryDecodeImage(request.ImageBase64);
+            if (imageBytes != null && imageBytes.Length > 0)
+            {
+                text = await ocrService.ExtractFromImageBytesAsync(
+                    imageBytes, workspace.Title, request.Language, cancellationToken);
+            }
+            else
+            {
+                // [TR] Geriye dönük uyumluluk: tarayıcı görsel göndermediyse eski PDF
+                //      tabanlı yola düş (pdftoppm gereklidir).
+                var pdfPath = await _documentService.GetPdfPhysicalPathAsync(email, request.DocumentId, cancellationToken);
+                if (string.IsNullOrWhiteSpace(pdfPath))
+                    return BadRequest(new { ok = false, message = "OCR için PDF dosya yolu bulunamadı." });
+
+                text = await ocrService.ExtractFromPdfRegionAsync(
+                    pdfPath, workspace.Title, request.Region, request.Language, cancellationToken);
+            }
         }
         catch (Exception ex)
         {
