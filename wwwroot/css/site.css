@@ -8,7 +8,8 @@
  * - auth-page / auth-card: Giriş ve hesap formları için ayrı tema varyantı eklenebilir.
  * - Karanlık mod: prefers-color-scheme ile isteğe bağlı uzantı.
  * - Workspace #ocr-status / #ai-status: .workspace-status-loading ile spinner + metin flex hizası (pdf-workspace.mjs).
- * - AI Sohbet sağ sidebar üstü: `.ai-chat-section--side-panel` ile mesaj alanı yüksekliği sınırı (Details.cshtml).
+ * - AI Sohbet sağ üst: `.ai-chat-section--side-panel` geniş max-height; OCR `.workspace-ocr-text` daha düşük min-height (Details rows).
+ * - AI sonuç sayfası (Result.cshtml): workspace sohbeti localStorage — `.ai-chat-window--result-page`.
  * - Zorluk: Kolay.
  */
 
@@ -304,7 +305,7 @@ html {
 }
 
 .workspace-ocr-text {
-  min-height: 180px;
+  min-height: 130px;
   resize: vertical;
   /* [TR] OCR çıktısı TSV benzeri tablo içerebilir (PaddleOCR artık bbox'a göre
    *      aynı satırdaki hücreleri '\t' ile ayırıyor). Monospace font + tab-size
@@ -407,20 +408,16 @@ html {
   overflow: hidden;
 }
 
-/* [TR] Sağ üst sohbet (eski Seçili Bölge dikey alanı): listeyi sığdır; OCR/AI paneli aşağıda kalır.
+/* [TR] Sağ üst sohbet: dikey alanı geniş tut (OCR kutusu site.css + Details rows ile küçültüldü).
    MODIFICATION NOTES (TR): PDF solunda kullanılmıyorsa yalnızca --side-panel; tam genişlik düzeninde 520px üst sınır kalır. */
 .ai-chat-section--side-panel .ai-chat-window {
-  max-height: min(280px, 35vh);
+  max-height: min(420px, 48vh);
 }
 
 /* [TR] Üst toolbar’da tek satır bölge özeti; dar ekranda satır kırılır. */
 .workspace-toolbar-region-metrics {
   font-variant-numeric: tabular-nums;
   word-break: break-word;
-}
-
-.ai-chat-header {
-  background: #f8fafc;
 }
 
 .ai-chat-window {
@@ -433,6 +430,11 @@ html {
   display: flex;
   flex-direction: column;
   gap: 0.85rem;
+}
+
+/* [TR] AI sonuç detay (Views/Ai/Result): workspace localStorage HTML; base .ai-chat-window’dan sonra tanımlanır (max-height override). */
+.ai-chat-window.ai-chat-window--result-page {
+  max-height: min(420px, 50vh);
 }
 
 .ai-chat-empty {

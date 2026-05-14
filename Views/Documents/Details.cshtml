@@ -9,7 +9,7 @@
     - Düzen: workspace-body = lg’de iki kolon (sol: PDF; sağ: üstte AI Sohbet, altında OCR + AI İşlem). Seçili bölge xy/wh üst toolbar’da.
     - OCR metni Gemini TTS seslendirme: btn-narrate-ocr-speech + workspace-shell data-narrate-speech-url.
     - #ocr-status / #ai-status: yükleme animasyonu (spinner); TTS ses bitince OCR durum satırı JS ile gizlenir.
-    - AI Sohbet: sağ sidebar’ın üstünde (eski Seçili Bölge alanı; max-height + iç scroll, site.css).
+    - AI Sohbet: sağ üst; .ai-chat-window max-height site.css (geniş). OCR textarea rows + .workspace-ocr-text min-height daha kompakt.
     - Daha gelişmiş PDF viewer (thumbnail, rotate) eklenebilir.
     - Annotation araçları ve metin overlay future sprint.
     - AI panelinde yeni model seçenekleri ve karşılaştırma görünümü eklenebilir.
@@ -190,7 +190,7 @@
                 <label for="ocr-text-placeholder" class="form-label small fw-medium">OCR Metni (duzenlenebilir)</label>
                 <textarea id="ocr-text-placeholder"
                           class="form-control workspace-ocr-text"
-                          rows="9"
+                          rows="6"
                           placeholder="OCR çıktısı bir sonraki adımda bu alana gelecektir. Şimdilik manuel düzenlenebilir placeholder."
                 >@Model.OcrTextPlaceholder</textarea>
                 @* [TR] Seslendir: Sunucuya OCR kutusunun metni gider — Gemini TTS ses döner — tarayıcı oynatır (Paddle hatasından bağımsız). *@

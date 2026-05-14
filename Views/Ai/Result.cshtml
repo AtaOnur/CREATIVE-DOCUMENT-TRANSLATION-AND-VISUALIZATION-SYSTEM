@@ -11,6 +11,7 @@
     MODIFICATION NOTES (TR)
     - Yan yana karşılaştırma (önceki/sonraki çıktı) bölümü eklenebilir.
     - Akademik citation mode ve kalite puanı etiketleri eklenebilir.
+    - AI sohbet kartı: tarayıcı localStorage (pdf-workspace ile aynı anahtar); ai-result-chat-history.mjs.
     - Visualize çıktısı için overlay export seçenekleri eklenebilir.
     - Genel image-to-text işlemi bu modülün kapsamında değildir.
 *@
@@ -67,5 +68,20 @@
             </div>
         </div>
     </div>
+
+    @* [TR] Workspace AI sohbeti (localStorage, belge başına) — pdf-workspace ile aynı anahtar; salt okunur. *@
+    <div class="card border-0 shadow-sm mt-4" id="ai-result-chat-mount" data-document-id="@Model.DocumentId">
+        <div class="card-body">
+            <h2 class="h6 fw-bold mb-1">AI Sohbet Gecmisi</h2>
+            <p class="small text-muted mb-3 mb-md-2">
+                Bu belge için workspace’te tutulan sohbet (bu tarayıcıda saklanır). Detay sayfasında salt okunur özetlenir.
+            </p>
+            <div id="ai-result-chat-window" class="ai-chat-window ai-chat-window--result-page border rounded d-none" aria-label="Sohbet geçmişi"></div>
+            <p id="ai-result-chat-empty" class="small text-muted mb-0" role="status">Sohbet gecmisi kontrol ediliyor…</p>
+        </div>
+    </div>
 </div>
 
+@section Scripts {
+    <script type="module" src="~/js/ai-result-chat-history.mjs" asp-append-version="true"></script>
+}

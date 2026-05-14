@@ -333,6 +333,7 @@ function attachShowMoreHandler() {
 //      tarayıcıda documentId anahtarıyla saklanır. Yalnızca "Temizle" ile silinir.
 //      İhlali tamamlanmamış "yazıyor..." balonları kaydedilmez (filtre).
 const AI_CHAT_STORAGE_PREFIX = "pdf_bitirme_ai_chat_v1";
+// [TR] Views/Ai/Result + wwwroot/js/ai-result-chat-history.mjs aynı prefix + documentId ile okur — değişirse orası da güncellenmeli.
 
 function getAiChatStorageKey() {
   return `${AI_CHAT_STORAGE_PREFIX}:${documentId}`;
