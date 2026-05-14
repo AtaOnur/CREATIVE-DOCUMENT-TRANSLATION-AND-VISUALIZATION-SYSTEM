@@ -8,6 +8,8 @@
  * - OpenId Connect / JWT API koruması.
  * - Demo seed verisi eklendi (sunum için hızlı başlangıç).
  * - Ocr:UseMock=false ile TesseractCliOcrService aktif edilebilir.
+ * - AddAntiforgery HeaderName: workspace fetch (OCR kaydetme, AI işlem, OCR seslendirme) için anti-CSRF token üstbilgide doğrulanır.
+ * - Gemini TTS OCR metni seslendirme: AddHttpClient + IGeminiTtsSpeechService (Ai:Gemini:ApiKey paylaşılır).
  * - Zorluk: Kolay–orta.
  */
 
@@ -129,6 +131,19 @@ builder.Services.AddAuthentication(CookieAuthenticationDefaults.AuthenticationSc
     });
 
 builder.Services.AddAuthorization();
+
+// ─── Anti-forgery (workspace JSON POST) ──────────────────────────────────────
+// [TR] ValidateAntiForgeryToken + fetch: token üstbilgide RequestVerificationToken ile gelir.
+// MODIFICATION NOTES (TR): Header adı olmadan yalnızca form alanı beklenir; OCR/AI JSON akışı kırılır.
+builder.Services.AddAntiforgery(o => o.HeaderName = "RequestVerificationToken");
+
+// ─── Gemini TTS: OCR textarea metni → ses (MIME sunucunun Content-Type ile) ─────────────────
+// [TR] generateContent AUDIO; Gemini API anahtarı Ai:Gemini ile diğer AI çağrılarıyla paylaşılır.
+// MODIFICATION NOTES (TR)
+// - TtsModel/TtsVoiceName appsettings Ai:Gemini altında yapılandırılır.
+// - ApiKey boşsa NarrateOcrSpeech InvalidOperationException mesajını JSON hata olarak döner.
+builder.Services.AddHttpClient<GeminiTtsSpeechService>();
+builder.Services.AddTransient<IGeminiTtsSpeechService>(sp => sp.GetRequiredService<GeminiTtsSpeechService>());
 
 builder.Services.AddControllersWithViews();
 

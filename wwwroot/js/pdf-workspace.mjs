@@ -1,7 +1,7 @@
 /*
  * [TR] Bu dosya ne işe yarar: Workspace istemci davranışı — PDF render, sayfa/zoom kontrolü, dikdörtgen seçim overlay.
  * [TR] Neden gerekli: Details ekranını üretken bir çalışma alanına dönüştürür.
- * [TR] Kapsam: OCR bölge seçimi + "Görsel Seç" (multimodal AI girdi) + AI panel tetikleme.
+ * [TR] Kapsam: OCR bölge seçimi + "Görsel Seç" (multimodal AI girdi) + AI panel + OCR metnini Gemini TTS ile seslendirme.
  *
  * SEÇİM AKIŞI (yeni):
  *   1. Kullanıcı PDF üzerinde sol fareye basılı tutup sürükler → dikdörtgen
@@ -10,11 +10,18 @@
  *   3. "Görsel Seç"   → seçili bölge canvas'tan kırpılarak base64 PNG'ye çevrilir;
  *                       önizlemesi yan panelde gösterilir ve AI isteğine
  *                       inputImageBase64 olarak iliştirilir.
+ *   4. "OCR Metnini Seslendir" → textarea’daki metin sunucuya gönderilir (OCR motorundan bağımsız), ses blob’u oynatılır.
  *
  * MODIFICATION NOTES (TR)
  * - Çoklu seçim için selection listesi ve çizim katmanı genişletilebilir.
  * - Tam sayfa OCR ve annotation araçları eklenebilir.
  * - Metin overlay (textLayer) ileride açılabilir.
+ * - Workspace durum satırları (#ocr-status, #ai-status): setOcrStatus / setAiStatus üçüncü argüman
+ *   { loading: true } ile Bootstrap spinner-border-sm gösterir — "Metni Çıkar", seslendirme (istek +
+ *   oynatma), NLP/AI işlemi beklerken kullanılır. Ses oynatımı bitince ended olayı clearOcrStatus() ile
+ *   metni kaldırır (sabit "Ses oynatılıyor" kalıntısı olmaz).
+ * - AI Sohbet (#ai-chat-window) sağ sidebar’ın üstünde; #region-page … #region-height üst toolbar’da (setRegionInfo).
+ * - Seslendirme: <audio controls> veya duraklat/durdur UI ileride eklenebilir.
  * - Görsel sıkıştırma (JPEG kalite ayarı) büyük bölgeler için eklenebilir.
  * - Zorluk: Orta.
  */
@@ -31,6 +38,8 @@ const pdfUrl = shell.dataset.pdfUrl || "";
 const pagePreviewUrl = shell.dataset.pagePreviewUrl || "";
 const extractUrl = shell.dataset.extractUrl || "";
 const saveOcrUrl = shell.dataset.saveOcrUrl || "";
+// data-narrate-speech-url → Documents/NarrateOcrSpeech (OCR kutusu metni JSON { text } ile gider).
+const narrateSpeechUrl = shell.dataset.narrateSpeechUrl || "";
 const aiProcessUrl = shell.dataset.aiProcessUrl || "";
 const defaultAiModel = shell.dataset.defaultAiModel || "mock-gpt";
 const defaultStyle = shell.dataset.defaultStyle || "Formal";
@@ -62,6 +71,8 @@ const btnCancelSelection = document.getElementById("btn-cancel-selection");
 const btnExtract = document.getElementById("btn-extract-text");
 const btnSelectImage = document.getElementById("btn-select-image");
 const btnSaveOcrText = document.getElementById("btn-save-ocr-text");
+// OCR metnini Gemini TTS ile çalar (Details.cshtml id).
+const btnNarrateOcrSpeech = document.getElementById("btn-narrate-ocr-speech");
 const ocrTextarea = document.getElementById("ocr-text-placeholder");
 const ocrStatus = document.getElementById("ocr-status");
 
@@ -86,11 +97,25 @@ const aiStatus = document.getElementById("ai-status");
 const aiResultLink = document.getElementById("ai-result-link");
 
 // [TR] WhatsApp tarzı sohbet alanı — mesajlar burada görüntülenir.
+// [TR] Sohbet listesi DOM’da #workspace-side-panel üstünde; ID’ler sabit.
 const chatWindow = document.getElementById("ai-chat-window");
 const chatEmpty = document.getElementById("ai-chat-empty");
 const chatCount = document.getElementById("ai-chat-count");
 const btnClearChat = document.getElementById("btn-clear-chat");
 let chatMessageCount = 0;
+
+// ─── OCR → son ses blob URL’ü (bellek sızıntısını önlemek için yeni istekte revoke) ───
+// [TR] narrateAudioEl: Üzerinde ended ile durum satırını temizlemek ve üst üste oynatmayı kesmek için tutulur.
+// MODIFICATION NOTES (TR): İleride tek Audio örneği + stop() ile güncellenebilir.
+let narrateObjectUrl = null;
+let narrateAudioEl = null;
+
+function revokeNarrateObjectUrl() {
+  if (narrateObjectUrl) {
+    URL.revokeObjectURL(narrateObjectUrl);
+    narrateObjectUrl = null;
+  }
+}
 
 const elPage = document.getElementById("region-page");
 const elX = document.getElementById("region-x");
@@ -120,6 +145,7 @@ function openNativePreview() {
 }
 
 function setRegionInfo(region) {
+  if (!elPage || !elX || !elY || !elW || !elH) return;
   if (!region) {
     elPage.textContent = "-";
     elX.textContent = "-";
@@ -146,30 +172,9 @@ function setSelectionUi() {
   }
 }
 
-function setOcrStatus(type, message) {
-  if (!ocrStatus) return;
-  ocrStatus.classList.remove("d-none", "text-success", "text-danger", "text-muted");
-  if (type === "success") ocrStatus.classList.add("text-success");
-  else if (type === "error") ocrStatus.classList.add("text-danger");
-  else ocrStatus.classList.add("text-muted");
-  ocrStatus.textContent = message;
-}
-
-function setAiStatus(type, message) {
-  if (!aiStatus) return;
-  aiStatus.classList.remove("d-none", "text-success", "text-danger", "text-muted");
-  if (type === "success") aiStatus.classList.add("text-success");
-  else if (type === "error") aiStatus.classList.add("text-danger");
-  else aiStatus.classList.add("text-muted");
-  aiStatus.textContent = message;
-}
-
-// ─── SOHBET YARDIMCILARI ─────────────────────────────────────────────────────
-// [TR] Mesaj balonlarını WhatsApp tarzında ekler/yöneten yardımcılar.
-//      Kullanıcı mesajı: yakalanan görsel + (varsa) gönderilen metin + (varsa)
-//      kullanıcı promptu (ayırıcıdan sonra) + altında reaction chip'leri.
-//      AI mesajı: cevap metni + (varsa) cevap görseli.
-
+/**
+ * [TR] Durum satırı ve sohbet balonlarında innerHTML kullanıldığında metin kaçışı.
+ */
 function escapeHtml(s) {
   if (s == null) return "";
   return String(s)
@@ -179,6 +184,86 @@ function escapeHtml(s) {
     .replaceAll('"', "&quot;")
     .replaceAll("'", "&#39;");
 }
+
+// ─── OCR / AI DURUM SATIRI (#ocr-status, #ai-status) ──────────────────────
+// [TR] Ne işe yarar: Kısa bilgi, hata ve "yükleniyor" (spinner) göstergesi — kullanıcı uzun isteklerde boş ekran görmez.
+// MODIFICATION NOTES (TR)
+// - { loading: true } ile innerHTML + spinner (XSS için mesajlar escapeHtml ile kaçışlı).
+// - clearOcrStatus: TTS bittiğinde veya satırın tamamen kaldırılması gerektiğinde (d-none + temizlik).
+
+/**
+ * [TR] #ocr-status içeriğini kaldırır ve gizler (ses oynatımı bittiğinde veya boş göstermek için).
+ */
+function clearOcrStatus() {
+  if (!ocrStatus) return;
+  ocrStatus.classList.add("d-none");
+  ocrStatus.classList.remove("workspace-status-loading");
+  ocrStatus.textContent = "";
+  ocrStatus.innerHTML = "";
+}
+
+/**
+ * [TR] #ocr-status: bilgi (info) / başarı / hata metni veya { loading: true } ile spinner + metin.
+ * [TR] Ne işe yarar: OCR çıkarma, TTS, kaydetme sırasında görsel geri bildirim (site.css .workspace-status-loading).
+ */
+function setOcrStatus(type, message, options = {}) {
+  const loading = options.loading === true;
+  if (!ocrStatus) return;
+  ocrStatus.classList.remove("d-none", "text-success", "text-danger", "text-muted", "workspace-status-loading");
+  if (type === "success") ocrStatus.classList.add("text-success");
+  else if (type === "error") ocrStatus.classList.add("text-danger");
+  else ocrStatus.classList.add("text-muted");
+
+  if (!message && !loading) {
+    clearOcrStatus();
+    return;
+  }
+
+  if (loading) {
+    ocrStatus.classList.add("workspace-status-loading");
+    ocrStatus.innerHTML =
+      '<span class="spinner-border spinner-border-sm me-2 align-middle workspace-status-spinner" role="status" aria-live="polite" aria-busy="true"></span>' +
+      "<span>" +
+      escapeHtml(message) +
+      "</span>";
+    return;
+  }
+
+  ocrStatus.textContent = message;
+}
+
+/**
+ * [TR] #ai-status: NLP/AI paneli kısa mesajı; setOcrStatus ile aynı loading sözleşmesi (spinner + escapeHtml).
+ * MODIFICATION NOTES (TR): Başarı/hata sonrası kullanıcı özet mesajını görür; fetch sırasında spinner.
+ */
+function setAiStatus(type, message, options = {}) {
+  const loading = options.loading === true;
+  if (!aiStatus) return;
+  aiStatus.classList.remove("d-none", "text-success", "text-danger", "text-muted", "workspace-status-loading");
+  if (type === "success") aiStatus.classList.add("text-success");
+  else if (type === "error") aiStatus.classList.add("text-danger");
+  else aiStatus.classList.add("text-muted");
+
+  if (loading) {
+    aiStatus.classList.add("workspace-status-loading");
+    aiStatus.innerHTML =
+      '<span class="spinner-border spinner-border-sm me-2 align-middle workspace-status-spinner" role="status" aria-live="polite" aria-busy="true"></span>' +
+      "<span>" +
+      escapeHtml(message) +
+      "</span>";
+    return;
+  }
+
+  aiStatus.textContent = message;
+}
+
+// ─── SOHBET YARDIMCILARI (WhatsApp tarzı balonlar, #ai-chat-window sağ panelde) ───
+// [TR] Ne işe yarar: Kullanıcı gönderisi + AI cevabı DOM’a eklenir; sohbet geçmişi sunucuda kalıcı tutulmaz (oturumdaki sayfa).
+// [TR] Balon yapısı: kullanıcı mesajı — görsel + metin + isteğe bağlı prompt + reaction chip’ler (işlem/model/stil);
+//      AI mesajı — metin, isteğe bağlı görsel veya hata.
+// MODIFICATION NOTES (TR)
+// - Uzun metin: kısaltma + "Devamını göster"; görseller base64 özetlenmez (büyük payload uyarısı).
+// - COLLAPSE_* eşikleri aşağıda sabit.
 
 function ensureChatVisible() {
   if (chatEmpty && !chatEmpty.classList.contains("d-none")) {
@@ -613,8 +698,11 @@ btnExtract.addEventListener("click", () => {
     imageBase64: cropped ? cropped.base64 : null,
   };
 
+  // [TR] Sunucu OCR (Tesseract/Paddle) uzun sürebilir — #ocr-status üzerinde spinner gösterilir.
   btnExtract.disabled = true;
-  setOcrStatus("info", `OCR çalışıyor... (${selectedEngine || "varsayılan"})`);
+  setOcrStatus("info", `OCR çalışıyor... (${selectedEngine || "varsayılan"})`, {
+    loading: true,
+  });
   fetch(extractUrl, {
     method: "POST",
     headers: {
@@ -718,7 +806,7 @@ if (btnSaveOcrText) {
   btnSaveOcrText.addEventListener("click", () => {
     if (!saveOcrUrl || !lastOcrResultId || !ocrTextarea) return;
     btnSaveOcrText.disabled = true;
-    setOcrStatus("info", "OCR metni kaydediliyor...");
+    setOcrStatus("info", "OCR metni kaydediliyor...", { loading: true });
     fetch(saveOcrUrl, {
       method: "POST",
       headers: {
@@ -744,6 +832,108 @@ if (btnSaveOcrText) {
         setOcrStatus("error", "Kaydetme sırasında hata oluştu.");
         btnSaveOcrText.disabled = false;
       });
+  });
+}
+
+// ─── OCR metni Gemini TTS seslendirme (sunucu proxy; Paddle/Tesseract OCR’dan ayrı) ───
+// [TR] Textarea içeriği JSON { text } ile gider; sunucu Gemini’den ses alır — istemci blob ile çalar.
+// [TR] Spinner: API + oynatma boyunca; audio "ended" → clearOcrStatus (mesaj kalıntısı yok).
+// MODIFICATION NOTES (TR): Görünür oynatıcı veya indir bağlantısı ileride eklenebilir.
+if (btnNarrateOcrSpeech && ocrTextarea) {
+  btnNarrateOcrSpeech.addEventListener("click", async () => {
+    const text = (ocrTextarea.value || "").trim();
+    if (!narrateSpeechUrl) {
+      setOcrStatus("error", "Seslendirme uç noktası yapılandırılmadı.");
+      return;
+    }
+    if (!text) {
+      setOcrStatus("error", "Önce OCR çıktısı oluşturun veya metin yazın.");
+      return;
+    }
+    btnNarrateOcrSpeech.disabled = true;
+    if (narrateAudioEl) {
+      try {
+        narrateAudioEl.pause();
+      } catch {
+        /* yoksay */
+      }
+      narrateAudioEl.onended = null;
+      narrateAudioEl.removeAttribute("src");
+      narrateAudioEl = null;
+    }
+    revokeNarrateObjectUrl();
+    setOcrStatus("info", "Metin Gemini TTS ile seslendiriliyor...", { loading: true });
+    try {
+      const r = await fetch(narrateSpeechUrl, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          RequestVerificationToken: antiForgeryToken,
+        },
+        body: JSON.stringify({ text }),
+      });
+      const ct = (r.headers.get("content-type") || "").toLowerCase();
+      if (!r.ok) {
+        let msg = "Seslendirme başarısız.";
+        try {
+          if (ct.includes("application/json")) {
+            const j = await r.json();
+            if (j?.message) msg = j.message;
+          } else {
+            const t = await r.text();
+            if (t) msg = t.slice(0, 400);
+          }
+        } catch {
+          /* yoksay */
+        }
+        setOcrStatus("error", msg);
+        return;
+      }
+      if (!ct.includes("audio")) {
+        setOcrStatus("error", "Beklenmeyen yanıt (ses dosyası değil).");
+        return;
+      }
+      const blob = await r.blob();
+      narrateObjectUrl = URL.createObjectURL(blob);
+      const audioEl = new Audio(narrateObjectUrl);
+      narrateAudioEl = audioEl;
+      audioEl.onended = () => {
+        clearOcrStatus();
+        revokeNarrateObjectUrl();
+        audioEl.onended = null;
+        if (narrateAudioEl === audioEl) narrateAudioEl = null;
+      };
+
+      setOcrStatus("info", "Ses oynatılıyor...", { loading: true });
+
+      try {
+        await audioEl.play();
+      } catch (playErr) {
+        const pm =
+          playErr && typeof playErr.message === "string"
+            ? playErr.message
+            : "Tarayıcı sesi çalamadı (ör. biçim desteklenmiyor).";
+        setOcrStatus(
+          "error",
+          pm.length > 240 ? `${pm.slice(0, 240)}…` : pm
+        );
+        audioEl.onended = null;
+        revokeNarrateObjectUrl();
+        if (narrateAudioEl === audioEl) narrateAudioEl = null;
+        return;
+      }
+    } catch (e) {
+      const msg =
+        e && typeof e.message === "string"
+          ? e.message
+          : "Seslendirme isteği sırasında hata oluştu.";
+      setOcrStatus(
+        "error",
+        msg.length > 240 ? `${msg.slice(0, 240)}…` : msg
+      );
+    } finally {
+      btnNarrateOcrSpeech.disabled = false;
+    }
   });
 }
 
@@ -812,9 +1002,10 @@ if (btnAiProcess) {
     // ─── AI mesajı için "yazıyor..." balonu ekle ───────────────────────────
     const typingNode = appendAiTypingPlaceholder();
 
+    // [TR] NLP görevi: ağ gecikmesi uzun olabildiği için #ai-status satırında spinner (+ "AI işlemi çalışıyor...").
     btnAiProcess.disabled = true;
     if (aiResultLink) aiResultLink.classList.add("d-none");
-    setAiStatus("info", "AI işlemi çalışıyor...");
+    setAiStatus("info", "AI işlemi çalışıyor...", { loading: true });
 
     fetch(aiProcessUrl, {
       method: "POST",

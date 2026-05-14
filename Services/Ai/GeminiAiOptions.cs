@@ -9,6 +9,7 @@ namespace pdf_bitirme.Services.Ai;
  * - Farklı Gemini model sürümleri (gemini-1.5-pro, gemini-2.0-flash vb.) DefaultModel ile seçilir.
  * - Temperature ve MaxOutputTokens ince ayar için buradan kontrol edilir.
  * - Gelecekte safety settings (HarmBlockThreshold) eklenebilir.
+ * - TTS alanları (Tts*) workspace OCR seslendirme için; model adı Google güncelleyebilir.
  * - Bu yapı bitirme projesi kapsamında bilinçli olarak basit tutulmuştur; sonra genişletilebilir.
  * - Zorluk: Kolay.
  */
@@ -29,9 +30,20 @@ public class GeminiAiOptions
     /// <summary>Yaratıcılık seviyesi (0.0 = deterministik, 1.0 = çok yaratıcı).</summary>
     public float Temperature { get; set; } = 0.7f;
 
-    /// <summary>
-    /// Görsel üretim için kullanılacak model.
-    /// Boş bırakılırsa Visualize operasyonu metin prompt döner (fallback).
-    /// </summary>
+    /// <summary>Görsel üretim için kullanılacak model.</summary>
     public string ImageModel { get; set; } = "gemini-2.0-flash-preview-image-generation";
+
+    /// <summary>Gemini TTS modeli (AI Studio dokümantasyonundaki kimlik).</summary>
+    public string TtsModel { get; set; } = "gemini-3.1-flash-tts-preview";
+
+    /// <summary>speechConfig içinde prebuiltVoiceConfig.voiceName (Örn: Kore, Puck).</summary>
+    public string TtsVoiceName { get; set; } = "Kore";
+
+    /// <summary>İsteğe bağlı çıkış dili kodu — boş bırakılırsa Gemini giriş dilini algılar (TTS kılavuzu).</summary>
+    public string TtsLanguageCode { get; set; } = "";
+
+    public int TtsTimeoutSeconds { get; set; } = 120;
+
+    /// <summary>OCR çıktısı çok uzunsa API/maliyet koruması.</summary>
+    public int TtsMaxTextCharacters { get; set; } = 4500;
 }

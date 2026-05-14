@@ -1,11 +1,15 @@
 @*
-    [TR] Bu dosya ne işe yarar: Belge çalışma alanı (workspace) — PDF viewer alanı, toolbar, seçim overlay, sağ panel.
+    [TR] Bu dosya ne işe yarar: Belge çalışma alanı (workspace) — PDF (sol), sağda üstte AI Sohbet + OCR/AI İşlem, toolbar’da bölge metrikleri.
     [TR] Model: DocumentWorkspaceViewModel
-    [TR] İlgili: DocumentsController.Details + Pdf endpoint, wwwroot/js/pdf-workspace.mjs
+    [TR] İlgili: DocumentsController.Details, Pdf endpoint, NarrateOcrSpeech (OCR→Gemini TTS), wwwroot/js/pdf-workspace.mjs
  
     MODIFICATION NOTES (TR)
     - Çoklu bölge seçimi (birden fazla kutu) ileride eklenebilir.
     - Tam sayfa OCR için tek tıklama aksiyonu eklenebilir.
+    - Düzen: workspace-body = lg’de iki kolon (sol: PDF; sağ: üstte AI Sohbet, altında OCR + AI İşlem). Seçili bölge xy/wh üst toolbar’da.
+    - OCR metni Gemini TTS seslendirme: btn-narrate-ocr-speech + workspace-shell data-narrate-speech-url.
+    - #ocr-status / #ai-status: yükleme animasyonu (spinner); TTS ses bitince OCR durum satırı JS ile gizlenir.
+    - AI Sohbet: sağ sidebar’ın üstünde (eski Seçili Bölge alanı; max-height + iç scroll, site.css).
     - Daha gelişmiş PDF viewer (thumbnail, rotate) eklenebilir.
     - Annotation araçları ve metin overlay future sprint.
     - AI panelinde yeni model seçenekleri ve karşılaştırma görünümü eklenebilir.
@@ -31,14 +35,17 @@
     </div>
 </div>
 
+@* [TR] Çalışma alanı gövdesi: workspace-shell tek kart içinde üst toolbar (ipucu + canlı bölge metrikleri) + iki kolon; sohbet sağ üstte. *@
 <div class="container pb-4">
     @Html.AntiForgeryToken()
+    @* data-narrate-speech-url: OCR textarea içeriği JSON { text } ile NarrateOcrSpeech’e gider → ses (MIME dinamik). *@
     <div class="workspace-shell card border-0 shadow-sm"
          data-document-id="@Model.Id"
          data-pdf-url="@Model.PdfEndpointUrl"
          data-page-preview-url="@Model.PagePreviewEndpointUrl"
          data-extract-url="@Model.ExtractTextEndpointUrl"
          data-save-ocr-url="@Model.SaveOcrEndpointUrl"
+         data-narrate-speech-url="@Model.NarrateSpeechEndpointUrl"
          data-ai-process-url="@(Url.Action("Process", "Ai") ?? "")"
          data-ocr-result-id="@(Model.LastOcrResultId?.ToString() ?? "")"
          data-default-ai-model="@Model.DefaultAiModel"
@@ -68,12 +75,24 @@
             @* [TR] Bölge seçimi her zaman aktif: PDF üzerinde sol fareye basılı tutarak sürükle.
                Eski "Bölge Seçimi Başlat / Onayla / İptal" düğmeleri kaldırıldı; bunun yerine
                kısa bir kullanım ipucu ve seçimi temizlemek için tek bir buton bırakıldı. *@
-            <span class="small text-muted">
+            <span class="small text-muted flex-shrink-0">
                 <strong>İpucu:</strong> PDF üzerinde sürükleyerek bölge seç.
             </span>
-            <button type="button" class="btn btn-sm btn-outline-danger ms-auto" id="btn-cancel-selection" disabled>Seçimi Temizle</button>
+            @* [TR] Seçili dikdörtgen — region-page … region-height (pdf-workspace.mjs setRegionInfo). Eski sağ panel dl kaldırıldı. *@
+            <span id="region-toolbar-metrics-wrap" class="small text-muted workspace-toolbar-region-metrics flex-grow-1" style="min-width: 0;">
+                Sayfa <strong id="region-page">@Model.SelectedRegion.PageNumber</strong>
+                · x <strong id="region-x">@Model.SelectedRegion.X.ToString("F1", System.Globalization.CultureInfo.InvariantCulture)</strong>
+                · y <strong id="region-y">@Model.SelectedRegion.Y.ToString("F1", System.Globalization.CultureInfo.InvariantCulture)</strong>
+                · w <strong id="region-width">@Model.SelectedRegion.Width.ToString("F1", System.Globalization.CultureInfo.InvariantCulture)</strong>
+                · h <strong id="region-height">@Model.SelectedRegion.Height.ToString("F1", System.Globalization.CultureInfo.InvariantCulture)</strong>
+            </span>
+            <button type="button" class="btn btn-sm btn-outline-danger ms-auto flex-shrink-0" id="btn-cancel-selection" disabled>Seçimi Temizle</button>
         </div>
 
+        @*
+            [TR] workspace-body: mobilde üst-alt (PDF, sonra sağ panel), lg+ yatay iki sütun.
+            [TR] workspace-viewer-area: Sol kolon — yalnızca pdf.js canvas, uyarılar, isteğe bağlı native iframe.
+        *@
         <div class="workspace-body d-flex flex-column flex-lg-row">
             <div class="workspace-viewer-area flex-grow-1 p-3">
                 @*
@@ -109,20 +128,26 @@
                 </div>
             </div>
 
+            @*
+                [TR] Sağ kolon: üstte AI Sohbet (eski “Seçili Bölge Bilgisi” dikey alanı), altında OCR + AI İşlem.
+                    Koordinatlar üst workspace-toolbar’da (#region-page … #region-height).
+            *@
             <aside class="workspace-side-panel border-top border-lg-start p-3" id="workspace-side-panel">
-                <h2 class="h6 fw-bold mb-3">Seçili Bölge Bilgisi</h2>
-                <dl class="small mb-3">
-                    <dt class="text-muted">Sayfa</dt>
-                    <dd id="region-page">@Model.SelectedRegion.PageNumber</dd>
-                    <dt class="text-muted">x</dt>
-                    <dd id="region-x">@Model.SelectedRegion.X</dd>
-                    <dt class="text-muted">y</dt>
-                    <dd id="region-y">@Model.SelectedRegion.Y</dd>
-                    <dt class="text-muted">width</dt>
-                    <dd id="region-width">@Model.SelectedRegion.Width</dd>
-                    <dt class="text-muted">height</dt>
-                    <dd id="region-height">@Model.SelectedRegion.Height</dd>
-                </dl>
+                @* [TR] AI Sohbet: bölge dl’sinin yerinde; yükseklik site.css ile sınırlı (iç scroll). *@
+                <div class="ai-chat-section ai-chat-section--side-panel card border-0 shadow-sm w-100 mb-3">
+                    <div class="ai-chat-header d-flex justify-content-between align-items-center px-3 py-2 border-bottom">
+                        <h2 class="h6 fw-bold mb-0">AI Sohbet</h2>
+                        <div class="d-flex gap-2 align-items-center">
+                            <span class="small text-muted" id="ai-chat-count">0 mesaj</span>
+                            <button type="button" class="btn btn-sm btn-outline-secondary" id="btn-clear-chat" title="Sohbeti temizle">Temizle</button>
+                        </div>
+                    </div>
+                    <div class="ai-chat-window" id="ai-chat-window" aria-live="polite">
+                        <div class="ai-chat-empty text-center text-muted small p-4" id="ai-chat-empty">
+                            Henüz mesaj yok. Bir bölge seçip "AI ile İşle" tıklayın — gönderdiğiniz içerik ve AI yanıtı burada görünecek.
+                        </div>
+                    </div>
+                </div>
 
                 @* OCR dil seçimi kaldırıldı; PaddleOCR dili otomatik algılar *@
                 @*
@@ -145,6 +170,8 @@
                     <button type="button" class="btn btn-accent" id="btn-extract-text" disabled>Metni Çıkar</button>
                     <button type="button" class="btn btn-outline-primary" id="btn-select-image" disabled>Görsel Seç</button>
                 </div>
+                @* [TR] OCR işlem satırı: pdf-workspace.mjs setOcrStatus(..., { loading: true }) ile “Metni Çıkar” / TTS / kayıt sırasında spinner + metin.
+                      Seslendirme sonrası ses bitince clearOcrStatus() bu satırı gizler (yazı kalıntısı kalmaz). *@
                 <div id="ocr-status" class="small mb-2 d-none"></div>
 
                 @* [TR] "Görsel Seç" ile yakalanan bölgenin önizlemesi.
@@ -166,6 +193,10 @@
                           rows="9"
                           placeholder="OCR çıktısı bir sonraki adımda bu alana gelecektir. Şimdilik manuel düzenlenebilir placeholder."
                 >@Model.OcrTextPlaceholder</textarea>
+                @* [TR] Seslendir: Sunucuya OCR kutusunun metni gider — Gemini TTS ses döner — tarayıcı oynatır (Paddle hatasından bağımsız). *@
+                <button type="button" class="btn btn-outline-secondary btn-sm mt-2 w-100" id="btn-narrate-ocr-speech">
+                    OCR Metnini Seslendir (Gemini TTS)
+                </button>
                 <button type="button" class="btn btn-outline-secondary btn-sm mt-2 w-100" id="btn-save-ocr-text" disabled>
                     OCR Metnini Kaydet
                 </button>
@@ -254,6 +285,7 @@
                               placeholder="rewrite academically / simplify this text / make it more persuasive / make it shorter"></textarea>
                 </div>
                 <button type="button" class="btn btn-dark w-100 mb-2" id="btn-ai-process">AI ile Isle</button>
+                @* [TR] NLP/AI istek durumu: setAiStatus(..., { loading: true }) ile Groq/Gemini beklerken spinner; tamamlanınca başarı/hata metni. *@
                 <div id="ai-status" class="small mb-2 d-none"></div>
                 <div class="small mt-2">
                     <a id="ai-result-link" class="link-primary d-none" href="#">Detayli sonuc sayfasini ac</a>
@@ -262,30 +294,6 @@
         </div>
     </div>
 
-    @*
-        [TR] AI Sohbet alanı — WhatsApp tarzı mesaj balonları.
-        Workspace kartının altında, tüm sayfanın genişliği boyunca yer alır.
-        Kullanıcı "AI ile İşle" tıkladığında:
-            1) Gönderilen içerik (metin/görsel + opsiyonel prompt) sağ tarafta
-               yeşil balon olarak gösterilir; balonun altında seçilen options
-               (operation, model, style) "reaction chip" olarak çizilir.
-            2) AI yanıtı sol tarafta beyaz/gri balon olarak eklenir.
-        İçerik kendi içinde dikey olarak kaydırılabilir (max-height + overflow).
-    *@
-    <div class="ai-chat-section card border-0 shadow-sm mt-4">
-        <div class="ai-chat-header d-flex justify-content-between align-items-center px-3 py-2 border-bottom">
-            <h2 class="h6 fw-bold mb-0">AI Sohbet</h2>
-            <div class="d-flex gap-2 align-items-center">
-                <span class="small text-muted" id="ai-chat-count">0 mesaj</span>
-                <button type="button" class="btn btn-sm btn-outline-secondary" id="btn-clear-chat" title="Sohbeti temizle">Temizle</button>
-            </div>
-        </div>
-        <div class="ai-chat-window" id="ai-chat-window" aria-live="polite">
-            <div class="ai-chat-empty text-center text-muted small p-4" id="ai-chat-empty">
-                Henüz mesaj yok. Bir bölge seçip "AI ile İşle" tıklayın — gönderdiğiniz içerik ve AI yanıtı burada görünecek.
-            </div>
-        </div>
-    </div>
 </div>
 
 @section Scripts {

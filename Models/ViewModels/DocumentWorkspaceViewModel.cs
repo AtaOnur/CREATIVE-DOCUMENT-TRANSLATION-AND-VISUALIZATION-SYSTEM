@@ -5,11 +5,12 @@ namespace pdf_bitirme.Models.ViewModels;
 /*
  * [TR] Bu dosya ne işe yarar: Belge çalışma alanı ekranı için tek ViewModel; viewer ayarları + seçim + OCR placeholder metni.
  * [TR] Neden gerekli: Details ekranında toolbar, sağ panel ve seçim akışını anlaşılır tek modelde toplar.
- * [TR] İlgili: DocumentsController.Details, Views/Documents/Details.cshtml, pdf-workspace.mjs
+ * [TR] İlgili: DocumentsController.Details, Views/Documents/Details.cshtml, pdf-workspace.mjs (OCR + TTS fetch)
  *
  * MODIFICATION NOTES (TR)
  * - Gelişmiş viewer için rotate, fit-height ve thumbnail alanları eklenebilir.
  * - Text overlay ve annotation verileri bu modele taşınabilir.
+ * - NarrateSpeechEndpointUrl: data-narrate-speech-url — OCR metninin Gemini TTS ile sese dönüştürülmesi.
  * - Genel resimden metin çıkarma özelliği bu sürümde bulunmamaktadır; future work olarak düşünülmüştür.
  * - Zorluk: Orta.
  */
@@ -26,6 +27,11 @@ public class DocumentWorkspaceViewModel
     public string ExtractTextEndpointUrl { get; set; } = string.Empty;
     public string SaveOcrEndpointUrl { get; set; } = string.Empty;
 
+    /// <summary>
+    /// POST Documents/NarrateOcrSpeech — OCR textarea metni sunucuda Gemini TTS ile ses üretir.
+    /// </summary>
+    public string NarrateSpeechEndpointUrl { get; set; } = string.Empty;
+
     public int CurrentPage { get; set; } = 1;
     public int TotalPages { get; set; } = 1;
     public int ZoomPercent { get; set; } = 100;
@@ -40,4 +46,3 @@ public class DocumentWorkspaceViewModel
     public string ThemePreference { get; set; } = "System";
     public List<string> AvailableAiModels { get; set; } = new();
 }
-
