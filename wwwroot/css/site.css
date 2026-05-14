@@ -212,6 +212,64 @@ html {
 
 .workspace-body {
   min-height: 70vh;
+  /* [TR] Satır içi yan panel ile görüntüleyicinin yüksekliğini hizalar (lg+). */
+  align-items: stretch;
+}
+
+/* [TR] Sağ OCR/AI paneli: daraltılabilir ray; açıkken sabit genişlik, kapalıyken dikey sekme. */
+.workspace-sidebar-rail {
+  display: flex;
+  flex-direction: row;
+  align-items: stretch;
+  flex-shrink: 0;
+  background: #ffffff;
+}
+
+.workspace-sidebar-expand-tab {
+  display: none;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 0.35rem;
+  width: 2.75rem;
+  flex-shrink: 0;
+  margin: 0;
+  padding: 0.65rem 0.25rem;
+  border: none;
+  /* [TR] aside solda, sekme sağda — ayırıcı çizgi sekmenin solunda */
+  border-left: 1px solid rgba(15, 61, 76, 0.12);
+  background: linear-gradient(180deg, #f8fafc 0%, #ffffff 100%);
+  color: #0f172a;
+  font-size: 0.72rem;
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  writing-mode: vertical-rl;
+  text-orientation: mixed;
+  cursor: pointer;
+  box-shadow: -2px 0 8px rgba(15, 61, 76, 0.06);
+  transition: background 0.2s ease, color 0.2s ease;
+  z-index: 2;
+}
+
+.workspace-sidebar-expand-tab:hover {
+  background: #ffffff;
+  color: var(--app-accent, #0d9488);
+}
+
+.workspace-sidebar-expand-tab:focus-visible {
+  outline: 2px solid rgba(13, 148, 136, 0.55);
+  outline-offset: 2px;
+}
+
+.workspace-sidebar-expand-tab__glyph {
+  font-size: 1rem;
+  line-height: 1;
+  opacity: 0.75;
+}
+
+.workspace-sidebar-rail--collapsed .workspace-sidebar-expand-tab {
+  display: flex;
 }
 
 .workspace-viewer-area {
@@ -296,9 +354,47 @@ html {
 }
 
 .workspace-side-panel {
+  flex: 1 1 auto;
   width: 100%;
   max-width: 360px;
   background: #ffffff;
+  overflow-x: hidden;
+  overflow-y: auto;
+  max-height: 82vh;
+  box-sizing: border-box;
+  transition:
+    max-width 0.28s ease,
+    max-height 0.28s ease,
+    flex-basis 0.28s ease,
+    opacity 0.22s ease,
+    padding 0.22s ease,
+    border-width 0.2s ease,
+    visibility 0s linear;
+}
+
+.workspace-sidebar-rail--collapsed .workspace-side-panel {
+  flex: 0 1 0;
+  width: 0;
+  max-width: 0 !important;
+  min-width: 0;
+  padding-left: 0 !important;
+  padding-right: 0 !important;
+  padding-top: 0 !important;
+  padding-bottom: 0 !important;
+  margin: 0;
+  border-width: 0 !important;
+  opacity: 0;
+  visibility: hidden;
+  overflow: hidden;
+  pointer-events: none;
+  transition:
+    max-width 0.28s ease,
+    max-height 0.28s ease,
+    flex-basis 0.28s ease,
+    opacity 0.18s ease,
+    padding 0.22s ease,
+    border-width 0.2s ease,
+    visibility 0s linear 0.2s;
 }
 
 .workspace-ocr-text {
@@ -361,16 +457,61 @@ html {
   background-color: #f8d7da;
 }
 
-@media (max-width: 991px) {
+@media (max-width: 991.98px) {
+  .workspace-sidebar-rail {
+    width: 100%;
+    flex-direction: column;
+  }
+
   .workspace-side-panel {
-    max-width: 100%;
+    max-width: none;
+    max-height: none;
+  }
+
+  .workspace-sidebar-expand-tab {
+    flex-direction: row;
+    width: 100%;
+    writing-mode: horizontal-tb;
+    text-orientation: mixed;
+    padding: 0.55rem 0.75rem;
+    border-left: none;
+    border-top: 1px solid rgba(15, 61, 76, 0.12);
+    justify-content: center;
+    gap: 0.5rem;
+    box-shadow: 0 -2px 8px rgba(15, 61, 76, 0.06);
+  }
+
+  .workspace-sidebar-rail--collapsed {
+    min-height: 0;
+  }
+
+  /* [TR] Dar mobil düzende paneli yükseklikle gizle; genişlik viewer’a kalsın */
+  .workspace-sidebar-rail--collapsed .workspace-side-panel {
+    width: 100% !important;
+    max-width: none !important;
+    max-height: 0 !important;
+    min-height: 0 !important;
+    flex: 0 0 0 !important;
+  }
+}
+
+@media (min-width: 992px) {
+  .workspace-sidebar-rail {
+    align-self: stretch;
+  }
+
+  .workspace-sidebar-expand-tab {
+    position: sticky;
+    top: 5.5rem;
+    align-self: flex-start;
+    max-height: calc(82vh - 1rem);
   }
 }
 
 /*
  * -----------------------------------------------------------------------------
  * [TR] Workspace CSS notu:
- * - Sol tarafta viewer ve overlay; sağ panelde seçim/OCR placeholder alanları.
+ * - Sol tarafta viewer ve overlay; sağda daraltılabilir OCR/AI şeridi (.workspace-sidebar-rail).
  * - Sade görsel dil korunarak savunma ekran görüntülerine uygun düzen hedeflendi.
  *
  * MODIFICATION NOTES (TR)

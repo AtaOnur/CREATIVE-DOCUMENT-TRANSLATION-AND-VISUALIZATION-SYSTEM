@@ -109,7 +109,22 @@
                 </div>
             </div>
 
-            <aside class="workspace-side-panel border-top border-lg-start p-3" id="workspace-side-panel">
+            <div class="workspace-sidebar-rail d-flex flex-row align-items-stretch flex-shrink-0" id="workspace-sidebar-rail">
+                <aside class="workspace-side-panel border-top border-lg-start p-3"
+                       id="workspace-side-panel"
+                       aria-label="OCR ve yapay zekâ araçları">
+                    <div class="workspace-sidebar-toolbar d-flex align-items-center justify-content-between gap-2 mb-3 pb-2 border-bottom border-light-subtle">
+                        <span class="small fw-semibold text-uppercase text-muted mb-0">Yan panel</span>
+                        <button type="button"
+                                class="btn btn-sm btn-outline-secondary"
+                                id="btn-workspace-sidebar-collapse"
+                                aria-controls="workspace-side-panel"
+                                aria-expanded="true"
+                                title="Paneli daralt">
+                            Daralt
+                            <span aria-hidden="true" class="ms-1">⟩</span>
+                        </button>
+                    </div>
                 <h2 class="h6 fw-bold mb-3">Seçili Bölge Bilgisi</h2>
                 <dl class="small mb-3">
                     <dt class="text-muted">Sayfa</dt>
@@ -258,7 +273,18 @@
                 <div class="small mt-2">
                     <a id="ai-result-link" class="link-primary d-none" href="#">Detayli sonuc sayfasini ac</a>
                 </div>
-            </aside>
+                </aside>
+                <button type="button"
+                        class="workspace-sidebar-expand-tab"
+                        id="btn-workspace-sidebar-expand"
+                        aria-controls="workspace-side-panel"
+                        aria-expanded="false"
+                        aria-hidden="true"
+                        title="OCR ve AI panelini aç">
+                    <span class="workspace-sidebar-expand-tab__glyph" aria-hidden="true">⟨</span>
+                    <span class="workspace-sidebar-expand-tab__label">Araçlar</span>
+                </button>
+            </div>
         </div>
     </div>
 
