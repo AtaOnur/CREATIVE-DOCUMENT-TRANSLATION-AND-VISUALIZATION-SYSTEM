@@ -1028,5 +1028,33 @@ window.addEventListener("pagehide", () => {
 attachShowMoreHandler();
 restoreAiChat();
 
+/** [TR] Yan OCR/AI panelini daralt / dikey sekmeden geri aç — sunucu iş mantığına dokunmaz. */
+function setupWorkspaceSidebar() {
+  const sidebarRail = document.getElementById("workspace-sidebar-rail");
+  const btnCollapse = document.getElementById("btn-workspace-sidebar-collapse");
+  const btnExpand = document.getElementById("btn-workspace-sidebar-expand");
+  const sidePanel = document.getElementById("workspace-side-panel");
+  if (!sidebarRail || !btnCollapse || !btnExpand || !sidePanel) return;
+
+  function setCollapsed(collapsed) {
+    sidebarRail.classList.toggle("workspace-sidebar-rail--collapsed", collapsed);
+    btnCollapse.setAttribute("aria-expanded", collapsed ? "false" : "true");
+    btnExpand.setAttribute("aria-expanded", collapsed ? "false" : "true");
+    btnExpand.setAttribute("aria-hidden", (!collapsed).toString());
+    sidePanel.setAttribute("aria-hidden", collapsed ? "true" : "false");
+    if ("inert" in sidePanel) {
+      sidePanel.inert = collapsed;
+    }
+    if (collapsed && sidePanel.contains(document.activeElement)) {
+      btnExpand.focus();
+    }
+  }
+
+  btnCollapse.addEventListener("click", () => setCollapsed(true));
+  btnExpand.addEventListener("click", () => setCollapsed(false));
+}
+
+setupWorkspaceSidebar();
+
 init();
 
