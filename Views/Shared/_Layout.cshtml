@@ -11,11 +11,11 @@
     - Zorluk: Kolay–orta.
 *@
 <!DOCTYPE html>
-<html lang="tr">
+<html lang="en">
 <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <meta name="description" content="Creative Document Translation and Visualisation — PDF tabanlı belge işleme sistemi (bitirme projesi)." />
+    <meta name="description" content="Creative Document Translation and Visualisation — PDF-based document processing system." />
     <title>@ViewData["Title"] — CreativeDoc</title>
     <link rel="stylesheet" href="~/lib/bootstrap/dist/css/bootstrap.min.css" />
     <link rel="stylesheet" href="~/css/site.css" asp-append-version="true" />
@@ -25,34 +25,34 @@
     <header>
         <nav class="navbar navbar-expand-md navbar-dark border-bottom shadow-sm app-navbar">
             <div class="container">
-                <a class="navbar-brand fw-semibold" asp-controller="Home" asp-action="Index" title="Ana sayfa">
+                <a class="navbar-brand fw-semibold" asp-controller="Home" asp-action="Index" title="Home">
                     CreativeDoc
                 </a>
                 <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#mainNav"
-                        aria-controls="mainNav" aria-expanded="false" aria-label="Menüyü aç/kapat">
+                        aria-controls="mainNav" aria-expanded="false" aria-label="Toggle navigation">
                     <span class="navbar-toggler-icon"></span>
                 </button>
                 <div class="collapse navbar-collapse" id="mainNav">
                     <ul class="navbar-nav ms-auto align-items-md-center gap-md-2">
                         <li class="nav-item">
-                            <a class="nav-link" asp-controller="Home" asp-action="Index">Ana Sayfa</a>
+                            <a class="nav-link" asp-controller="Home" asp-action="Index">Home</a>
                         </li>
                         @if (User.Identity?.IsAuthenticated ?? false)
                         {
                             <li class="nav-item">
-                                <a class="nav-link" asp-controller="Dashboard" asp-action="Index">Pano</a>
+                                <a class="nav-link" asp-controller="Dashboard" asp-action="Index">Dashboard</a>
                             </li>
                             <li class="nav-item">
-                                <a class="nav-link" asp-controller="Documents" asp-action="Index">Belgeler</a>
+                                <a class="nav-link" asp-controller="Documents" asp-action="Index">Documents</a>
                             </li>
                             <li class="nav-item">
-                                <a class="nav-link" asp-controller="Documents" asp-action="Upload">Yükle</a>
+                                <a class="nav-link" asp-controller="Documents" asp-action="Upload">Upload</a>
                             </li>
                             <li class="nav-item">
-                                <a class="nav-link" asp-controller="Notebook" asp-action="Index">Not Defteri</a>
+                                <a class="nav-link" asp-controller="Notebook" asp-action="Index">Notebook</a>
                             </li>
                             <li class="nav-item">
-                                <a class="nav-link" asp-controller="Settings" asp-action="Index">Ayarlar</a>
+                                <a class="nav-link" asp-controller="Settings" asp-action="Index">Settings</a>
                             </li>
                             @if (User.IsInRole("Admin"))
                             {
@@ -62,27 +62,27 @@
                             }
                         }
                         <li class="nav-item">
-                            <a class="nav-link" asp-controller="Home" asp-action="Faq">SSS</a>
+                            <a class="nav-link" asp-controller="Home" asp-action="Faq">FAQ</a>
                         </li>
                         <li class="nav-item">
-                            <a class="nav-link" asp-controller="Home" asp-action="Privacy">Gizlilik</a>
+                            <a class="nav-link" asp-controller="Home" asp-action="Privacy">Privacy</a>
                         </li>
                         @if (User.Identity?.IsAuthenticated ?? false)
                         {
                             <li class="nav-item d-flex align-items-center flex-wrap gap-2 pt-2 pt-md-0">
                                 <span class="text-white-50 small text-truncate" style="max-width:12rem" title="@User.Identity!.Name">@User.Identity.Name</span>
                                 <form asp-controller="Account" asp-action="Logout" method="post" class="m-0 d-inline" data-loading-form="true">
-                                    <button type="submit" class="btn btn-outline-light btn-sm px-3">Çıkış</button>
+                                    <button type="submit" class="btn btn-outline-light btn-sm px-3">Logout</button>
                                 </form>
                             </li>
                         }
                         else
                         {
                             <li class="nav-item pt-2 pt-md-0">
-                                <a class="btn btn-outline-light btn-sm px-3" asp-controller="Account" asp-action="Login">Giriş</a>
+                                <a class="btn btn-outline-light btn-sm px-3" asp-controller="Account" asp-action="Login">Login</a>
                             </li>
                             <li class="nav-item pt-2 pt-md-0">
-                                <a class="btn btn-accent btn-sm px-3" asp-controller="Account" asp-action="Register">Kayıt Ol</a>
+                                <a class="btn btn-accent btn-sm px-3" asp-controller="Account" asp-action="Register">Create Account</a>
                             </li>
                         }
                     </ul>
@@ -100,12 +100,12 @@
         <div class="container small text-center text-md-start">
             <div class="row align-items-center g-2">
                 <div class="col-md-8">
-                    <strong>Creative Document Translation and Visualisation System</strong> — bitirme projesi kapsamında geliştirilmektedir.
+                    <strong>Creative Document Translation and Visualisation System</strong> — under active development.
                 </div>
                 <div class="col-md-4 text-md-end text-muted">
                     &copy; @DateTime.UtcNow.Year
-                    — <a asp-controller="Home" asp-action="Faq" class="link-secondary">SSS</a>
-                    · <a asp-controller="Home" asp-action="Privacy" class="link-secondary">Gizlilik</a>
+                    — <a asp-controller="Home" asp-action="Faq" class="link-secondary">FAQ</a>
+                    · <a asp-controller="Home" asp-action="Privacy" class="link-secondary">Privacy</a>
                 </div>
             </div>
         </div>

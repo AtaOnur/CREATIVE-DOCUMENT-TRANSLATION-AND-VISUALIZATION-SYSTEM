@@ -1,6 +1,6 @@
 @model pdf_bitirme.Models.ViewModels.AdminDocumentDetailsViewModel
 @{
-    ViewData["Title"] = "Belge Detayi";
+    ViewData["Title"] = "Document Details";
 }
 
 @*
@@ -9,62 +9,160 @@
     [TR] İlgili: AdminController.DocumentDetails
 
     MODIFICATION NOTES (TR)
-    - Belge içeriği mini önizleme (ilk sayfa) eklenebilir.
+    - Admin/Pdf endpoint'i ile belge PDF onizlemesi ve yeni sekmede acma eklendi.
     - Moderasyon gerekçesi metni ve işlem geçmişi eklenebilir.
+    - Belge ve chat mesaji ban aksiyonlari bu ekrandan yonetilir.
     - Bu admin yapısı bitirme projesi kapsamında bilinçli olarak basit tutulmuştur; sonra genişletilebilir.
 *@
 
 <div class="container py-4">
     <div class="d-flex justify-content-between align-items-center mb-3">
-        <h1 class="h4 fw-bold mb-0">Belge Detayi</h1>
-        <a class="btn btn-outline-secondary" asp-action="Documents">Listeye Don</a>
+        <h1 class="h4 fw-bold mb-0">Document Details</h1>
+        <a class="btn btn-outline-secondary" asp-action="Documents">Back to List</a>
     </div>
 
     <div class="card border-0 shadow-sm mb-3">
         <div class="card-body">
             <div class="row g-3">
                 <div class="col-md-6">
-                    <div class="small text-muted">Belge Adi</div>
+                    <div class="small text-muted">Document Name</div>
                     <div class="fw-semibold">@Model.DocumentName</div>
                 </div>
                 <div class="col-md-6">
-                    <div class="small text-muted">Sahip</div>
+                    <div class="small text-muted">Owner</div>
                     <div class="fw-semibold">@Model.OwnerEmail</div>
                 </div>
                 <div class="col-md-4">
-                    <div class="small text-muted">Durum</div>
+                    <div class="small text-muted">Status</div>
                     <partial name="_StatusBadge" model="@Model.Status" />
+                    @if (Model.IsBanned)
+                    {
+                        <span class="badge text-bg-danger ms-1">Banned</span>
+                    }
                 </div>
                 <div class="col-md-4">
-                    <div class="small text-muted">Boyut</div>
+                    <div class="small text-muted">Size</div>
                     <div>@(Math.Round(Model.SizeBytes / 1024.0, 2)) KB</div>
                 </div>
                 <div class="col-md-4">
-                    <div class="small text-muted">Guncelleme</div>
+                    <div class="small text-muted">Updated</div>
                     <div>@Model.UpdatedAtUtc.ToLocalTime().ToString("g")</div>
                 </div>
                 <div class="col-md-4">
-                    <div class="small text-muted">Upload Tarihi</div>
+                    <div class="small text-muted">Upload Date</div>
                     <div>@Model.CreatedAtUtc.ToLocalTime().ToString("g")</div>
                 </div>
                 <div class="col-md-4">
-                    <div class="small text-muted">OCR Kaydi</div>
+                    <div class="small text-muted">OCR Records</div>
                     <div>@Model.OcrCount</div>
                 </div>
                 <div class="col-md-4">
-                    <div class="small text-muted">AI Kaydi</div>
+                    <div class="small text-muted">AI Records</div>
                     <div>@Model.AiCount</div>
                 </div>
+                @if (Model.IsBanned)
+                {
+                    <div class="col-12">
+                        <div class="small text-muted">Ban Reason</div>
+                        <div>@(string.IsNullOrWhiteSpace(Model.BanReason) ? "-" : Model.BanReason)</div>
+                    </div>
+                }
             </div>
         </div>
     </div>
 
-    <form asp-action="DeleteDocument" method="post" data-loading-form="true">
-        @Html.AntiForgeryToken()
-        <input type="hidden" name="id" value="@Model.Id" />
-        <button class="btn btn-danger" type="submit" onclick="return confirm('Bu belgeyi tamamen silmek istediginize emin misiniz?');">
-            Problemli Belgeyi Sil
-        </button>
-    </form>
+    <div class="card border-0 shadow-sm mb-3">
+        <div class="card-body">
+            <div class="d-flex flex-wrap justify-content-between align-items-center gap-2 mb-3">
+                <h2 class="h6 fw-bold mb-0">Document Preview</h2>
+                <a class="btn btn-sm btn-outline-primary" asp-action="Pdf" asp-route-id="@Model.Id" target="_blank" rel="noopener">Open PDF in New Tab</a>
+            </div>
+            <div class="ratio ratio-16x9 border rounded bg-light">
+                <iframe src="@Url.Action("Pdf", "Admin", new { id = Model.Id })" title="Admin document PDF preview"></iframe>
+            </div>
+        </div>
+    </div>
+
+    <div class="card border-0 shadow-sm mb-3">
+        <div class="card-body d-flex flex-wrap gap-2 align-items-end">
+            <form asp-action="SetDocumentBan" method="post" class="d-flex flex-wrap gap-2 align-items-end" data-loading-form="true">
+                @Html.AntiForgeryToken()
+                <input type="hidden" name="id" value="@Model.Id" />
+                <input type="hidden" name="isBanned" value="@(Model.IsBanned ? "false" : "true")" />
+                @if (!Model.IsBanned)
+                {
+                    <input class="form-control" style="max-width:22rem" name="reason" placeholder="Ban reason (optional)" />
+                }
+                <button class="btn @(Model.IsBanned ? "btn-success" : "btn-warning")" type="submit">
+                    @(Model.IsBanned ? "Remove Document Ban" : "Ban Document")
+                </button>
+            </form>
+            <form asp-action="DeleteDocument" method="post" data-loading-form="true">
+                @Html.AntiForgeryToken()
+                <input type="hidden" name="id" value="@Model.Id" />
+                <button class="btn btn-outline-danger" type="submit" onclick="return confirm('Are you sure you want to permanently delete this document?');">
+                    Delete Document
+                </button>
+            </form>
+        </div>
+    </div>
+
+    <div class="card border-0 shadow-sm">
+        <div class="card-body">
+            <h2 class="h6 fw-bold mb-3">Document Chat Records</h2>
+            @if (Model.ChatMessages.Count == 0)
+            {
+                <p class="text-muted mb-0">No chat messages are recorded for this document.</p>
+            }
+            else
+            {
+                <div class="vstack gap-3">
+                    @foreach (var msg in Model.ChatMessages)
+                    {
+                        <div class="border rounded p-3 @(msg.IsBanned ? "bg-danger-subtle" : "bg-light-subtle")">
+                            <div class="d-flex flex-wrap justify-content-between gap-2 mb-2">
+                                <div class="small">
+                                    <strong>@msg.Role</strong> · @msg.MessageType · @msg.UserEmail
+                                    @if (msg.IsBanned)
+                                    {
+                                        <span class="badge text-bg-danger ms-1">Banned</span>
+                                    }
+                                </div>
+                                <div class="small text-muted">@msg.CreatedAtUtc.ToLocalTime().ToString("g")</div>
+                            </div>
+                            <div class="small mb-2" style="white-space: pre-wrap;">@(string.IsNullOrWhiteSpace(msg.Text) ? "-" : msg.Text)</div>
+                            @if (!string.IsNullOrWhiteSpace(msg.ImageUrl))
+                            {
+                                <a class="btn btn-sm btn-outline-secondary me-1" href="@msg.ImageUrl" target="_blank" rel="noopener">Open Image</a>
+                            }
+                            @if (!string.IsNullOrWhiteSpace(msg.AudioUrl))
+                            {
+                                <audio controls class="w-100 my-2">
+                                    <source src="@msg.AudioUrl" />
+                                </audio>
+                            }
+                            @if (!string.IsNullOrWhiteSpace(msg.ResultUrl))
+                            {
+                                <a class="btn btn-sm btn-outline-primary me-1" href="@msg.ResultUrl">Open Result</a>
+                            }
+                            <form asp-action="SetChatMessageBan" method="post" class="d-flex flex-wrap gap-2 mt-2" data-loading-form="true">
+                                @Html.AntiForgeryToken()
+                                <input type="hidden" name="id" value="@msg.Id" />
+                                <input type="hidden" name="documentId" value="@Model.Id" />
+                                <input type="hidden" name="isBanned" value="@(msg.IsBanned ? "false" : "true")" />
+                                @if (!msg.IsBanned)
+                                {
+                                    <input class="form-control form-control-sm" style="max-width:22rem" name="reason" placeholder="Chat ban reason (optional)" />
+                                }
+                                <button class="btn btn-sm @(msg.IsBanned ? "btn-success" : "btn-outline-warning")" type="submit">
+                                    @(msg.IsBanned ? "Remove Chat Ban" : "Ban Chat Message")
+                                </button>
+                            </form>
+                        </div>
+                    }
+                </div>
+            }
+        </div>
+    </div>
 </div>
 

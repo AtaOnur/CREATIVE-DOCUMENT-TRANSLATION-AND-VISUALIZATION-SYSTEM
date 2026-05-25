@@ -12,8 +12,8 @@ namespace pdf_bitirme.Models;
  */
 public class ForgotPasswordViewModel
 {
-    [Required(ErrorMessage = "E-posta gerekli.")]
-    [EmailAddress(ErrorMessage = "Geçerli bir e-posta girin.")]
-    [Display(Name = "E-posta")]
+    [Required(ErrorMessage = "Email is required.")]
+    [EmailAddress(ErrorMessage = "Enter a valid email address.")]
+    [Display(Name = "Email")]
     public string Email { get; set; } = string.Empty;
 }

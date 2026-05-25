@@ -70,8 +70,8 @@ public class StabilityAiService : IAiService
         {
             return new AiServiceResult
             {
-                OutputText = "[Stability AI yalnızca görsel üretimi (Visualize) destekler. " +
-                             "Metin işlemleri için Gemini veya Groq modeli seçiniz.]"
+                OutputText = "[Stability AI only supports image generation (Visualize). " +
+                             "Please select a Gemini or Groq model for text operations.]"
             };
         }
 
@@ -81,8 +81,8 @@ public class StabilityAiService : IAiService
         }
         catch (Exception ex)
         {
-            _logger.LogError(ex, "Stability AI görsel üretimi başarısız. Model={Model}", request.ModelName);
-            throw new InvalidOperationException($"Stability AI hatası: {ex.Message}", ex);
+            _logger.LogError(ex, "Stability AI image generation failed. Model={Model}", request.ModelName);
+            throw new InvalidOperationException($"Stability AI error: {ex.Message}", ex);
         }
     }
 
@@ -109,7 +109,7 @@ public class StabilityAiService : IAiService
         //      OCR metni Türkçe olabileceğinden:
         //      1. Sadece ASCII karakterler tutulur (Türkçe harfler kaldırılır)
         //      2. Kısa, görsel modele uygun bir İngilizce prompt oluşturulur
-        var prompt = BuildEnglishPrompt(documentTitle, request.InputText!);
+        var prompt = BuildEnglishPrompt(documentTitle, request.InputText ?? string.Empty, request.CustomInstruction);
 
         // [TR] Model ID'sine göre engine belirlenir
         //      "stability-sd3" → /generate/sd3 (daha kaliteli)
@@ -119,7 +119,7 @@ public class StabilityAiService : IAiService
             : "core";
 
         var url = $"{_options.BaseUrl.TrimEnd('/')}/{engine}";
-        _logger.LogInformation("Stability AI görsel isteği → engine={Engine}, url={Url}", engine, url);
+        _logger.LogInformation("Stability AI image request -> engine={Engine}, url={Url}", engine, url);
 
         // [TR] Stability AI multipart/form-data formatı kullanır.
         //      .NET MultipartFormDataContent uyumsuz header'lar eklediğinden
@@ -154,18 +154,18 @@ public class StabilityAiService : IAiService
 
             var detail = (int)response.StatusCode switch
             {
-                402 => "Ücretsiz krediniz bitti. https://platform.stability.ai/account/credits adresinden kredi ekleyin.",
-                403 => "API anahtarı geçersiz. appsettings.json → Ai:Stability:ApiKey kontrol edin.",
-                429 => "Rate limit aşıldı. Lütfen bekleyin.",
+                402 => "Your free credits are exhausted. Add credits at https://platform.stability.ai/account/credits.",
+                403 => "The API key is invalid. Check Ai:Stability:ApiKey in appsettings.json.",
+                429 => "Rate limit exceeded. Please wait.",
                 _   => $"HTTP {(int)response.StatusCode}: {errBody}"
             };
 
-            throw new InvalidOperationException($"Stability AI hatası: {detail}");
+            throw new InvalidOperationException($"Stability AI error: {detail}");
         }
 
         // [TR] Başarılı yanıt: Accept: application/json → {"image":"<base64>","finish_reason":"SUCCESS"}
         var body = await response.Content.ReadAsStringAsync(ct);
-        _logger.LogDebug("Stability AI yanıt: {Body}", body.Length > 200 ? body[..200] : body);
+        _logger.LogDebug("Stability AI response: {Body}", body.Length > 200 ? body[..200] : body);
 
         string base64Data;
         string ext = "png";
@@ -177,22 +177,22 @@ public class StabilityAiService : IAiService
             // [TR] "image" alanı base64 görsel verisini içerir
             if (doc.RootElement.TryGetProperty("image", out var imgProp))
             {
-                base64Data = imgProp.GetString() ?? throw new InvalidOperationException("Görsel verisi boş.");
+                base64Data = imgProp.GetString() ?? throw new InvalidOperationException("Image data is empty.");
             }
             // [TR] Bazı yanıtlarda "artifacts" dizisi içinde gelir
             else if (doc.RootElement.TryGetProperty("artifacts", out var arts))
             {
                 base64Data = arts[0].GetProperty("base64").GetString()
-                    ?? throw new InvalidOperationException("artifacts[0].base64 boş.");
+                    ?? throw new InvalidOperationException("artifacts[0].base64 is empty.");
             }
             else
             {
-                throw new InvalidOperationException($"Beklenmeyen Stability AI yanıtı: {body}");
+                throw new InvalidOperationException($"Unexpected Stability AI response: {body}");
             }
         }
         catch (Exception ex) when (ex is not InvalidOperationException)
         {
-            throw new InvalidOperationException($"Stability AI yanıtı ayrıştırılamadı: {body}", ex);
+            throw new InvalidOperationException($"Stability AI response could not be parsed: {body}", ex);
         }
 
         var fileName = $"{Guid.NewGuid():N}.{ext}";
@@ -201,11 +201,11 @@ public class StabilityAiService : IAiService
         Directory.CreateDirectory(dir);
         await File.WriteAllBytesAsync(Path.Combine(dir, fileName), Convert.FromBase64String(base64Data), ct);
 
-        _logger.LogInformation("Stability AI görsel kaydedildi: {File}", fileName);
+        _logger.LogInformation("Stability AI image saved: {File}", fileName);
 
         return new AiServiceResult
         {
-            OutputText     = $"Görsel başarıyla üretildi (Stability AI — {engine}).",
+            OutputText     = $"Image generated successfully (Stability AI - {engine}).",
             OutputImageUrl = $"/ai-images/{fileName}"
         };
     }
@@ -214,13 +214,17 @@ public class StabilityAiService : IAiService
     /// <summary>
     /// Stability AI için İngilizce görsel prompt oluşturur.
     /// [TR] Stability AI yalnızca İngilizce kabul eder.
-    ///      Türkçe metin ASCII'ye dönüştürülür; anlamlı kelimeler tutulur.
-    ///      Sonuna kalite etiketleri eklenerek görsel kalitesi artırılır.
+    ///      Türkçe metin ve özel prompt ASCII'ye dönüştürülür; özel prompt
+    ///      varsa görsel üretim yönergesinde öncelik kazanır.
     /// </summary>
-    private static string BuildEnglishPrompt(string documentTitle, string inputText)
+    private static string BuildEnglishPrompt(string documentTitle, string inputText, string? customInstruction)
     {
         // [TR] Adım 1: ASCII dışı karakterleri (ş,ğ,ü,ı vb.) kaldır
-        var asciiOnly = new string(inputText
+        var mergedInput = string.IsNullOrWhiteSpace(customInstruction)
+            ? inputText
+            : $"{customInstruction} {inputText}";
+
+        var asciiOnly = new string(mergedInput
             .Where(c => c < 128 && (char.IsLetterOrDigit(c) || char.IsWhiteSpace(c)))
             .ToArray());
 
@@ -250,6 +254,10 @@ public class StabilityAiService : IAiService
                 : $"A professional illustration representing '{titleAscii}'";
         }
 
-        return $"{subject}. High quality, detailed, professional artwork, 4K, sharp focus.";
+        var instructionPrefix = string.IsNullOrWhiteSpace(customInstruction)
+            ? ""
+            : $"Follow this user visual instruction: {new string(customInstruction.Where(c => c < 128).ToArray())}. ";
+
+        return $"{instructionPrefix}{subject}. High quality, detailed, professional artwork, 4K, sharp focus.";
     }
 }

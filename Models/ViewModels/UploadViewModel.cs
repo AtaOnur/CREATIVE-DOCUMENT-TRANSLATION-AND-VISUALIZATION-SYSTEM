@@ -14,10 +14,13 @@ namespace pdf_bitirme.Models.ViewModels;
  */
 public class UploadViewModel
 {
-    [Display(Name = "Başlık (isteğe bağlı)")]
+    [Display(Name = "Title (optional)")]
     [StringLength(500)]
     public string? Title { get; set; }
 
-    [Display(Name = "PDF dosyası")]
+    [Display(Name = "PDF file")]
     public IFormFile? File { get; set; }
+
+    [Display(Name = "Copyright and responsibility confirmation")]
+    public bool CopyrightResponsibilityAccepted { get; set; }
 }

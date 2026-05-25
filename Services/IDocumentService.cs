@@ -58,6 +58,14 @@ public interface IDocumentService
         AiServiceResult aiResult,
         CancellationToken cancellationToken = default);
 
+    Task<(bool Ok, Guid? AiResultId, string? AudioUrl, string? ErrorMessage)> SaveNarrationResultAsync(
+        string userEmail,
+        Guid documentId,
+        string inputText,
+        byte[] audioBytes,
+        string contentType,
+        CancellationToken cancellationToken = default);
+
     Task<AiResultPageViewModel?> GetAiResultPageAsync(
         string userEmail,
         Guid aiResultId,

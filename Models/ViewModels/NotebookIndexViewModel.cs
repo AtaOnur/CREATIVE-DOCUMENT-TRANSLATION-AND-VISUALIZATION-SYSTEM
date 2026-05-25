@@ -8,6 +8,7 @@ namespace pdf_bitirme.Models.ViewModels;
  * MODIFICATION NOTES (TR)
  * - Klasör, etiket ve favori filtreleri eklenebilir.
  * - Dışa aktarma (PDF/Markdown) eklenebilir.
+ * - TTS kayıtları da AiResult üzerinden listelenir; ileride özel ses filtreleri eklenebilir.
  * - Genel resim OCR desteği bu sürümde yer almamaktadır.
  * - Zorluk: Kolay.
  */
@@ -30,5 +31,7 @@ public class NotebookRowViewModel
     public string Style { get; set; } = string.Empty;
     public DateTime CreatedAtUtc { get; set; }
     public string PreviewContent { get; set; } = string.Empty;
+    public bool HasAudio { get; set; }
+    public bool HasImage { get; set; }
 }
 

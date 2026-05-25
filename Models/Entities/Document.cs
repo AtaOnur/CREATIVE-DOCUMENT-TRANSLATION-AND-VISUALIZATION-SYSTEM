@@ -11,6 +11,7 @@ namespace pdf_bitirme.Models.Entities;
  * - Sayfa sayısı, özet metin sütunları sonradan eklenebilir.
  * - Bulut depo URL’si veya hash ile bütünlük kontrolü.
  * - Önizleme küçük resmi (thumbnail) future work.
+ * - Admin moderasyonu için belge ban alanları eklendi.
  * - Zorluk: Kolay–orta.
  */
 public class Document
@@ -22,6 +23,9 @@ public class Document
     public string ContentType { get; set; } = "application/pdf";
     public long SizeBytes { get; set; }
     public DocumentStatus Status { get; set; }
+    public bool IsBanned { get; set; }
+    public string BanReason { get; set; } = string.Empty;
+    public DateTime? BannedAtUtc { get; set; }
     /// <summary>ContentRoot içinde Data/uploads altındaki göreli yol (ör. AB12/..../id.pdf).</summary>
     public string StorageRelativePath { get; set; } = string.Empty;
     public DateTime CreatedAtUtc { get; set; }

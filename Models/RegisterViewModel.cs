@@ -14,21 +14,21 @@ namespace pdf_bitirme.Models;
  */
 public class RegisterViewModel
 {
-    [Required(ErrorMessage = "E-posta gerekli.")]
-    [EmailAddress(ErrorMessage = "Geçerli bir e-posta girin.")]
-    [Display(Name = "E-posta")]
+    [Required(ErrorMessage = "Email is required.")]
+    [EmailAddress(ErrorMessage = "Enter a valid email address.")]
+    [Display(Name = "Email")]
     public string Email { get; set; } = string.Empty;
 
-    [Required(ErrorMessage = "Parola gerekli.")]
-    [StringLength(128, MinimumLength = 8, ErrorMessage = "Parola en az {2} karakter olmalı.")]
+    [Required(ErrorMessage = "Password is required.")]
+    [StringLength(128, MinimumLength = 8, ErrorMessage = "Password must be at least {2} characters.")]
     [StrongPassword]
     [DataType(DataType.Password)]
-    [Display(Name = "Parola")]
+    [Display(Name = "Password")]
     public string Password { get; set; } = string.Empty;
 
-    [Required(ErrorMessage = "Parola tekrarı gerekli.")]
+    [Required(ErrorMessage = "Password confirmation is required.")]
     [DataType(DataType.Password)]
-    [Compare(nameof(Password), ErrorMessage = "Parolalar eşleşmiyor.")]
-    [Display(Name = "Parola (tekrar)")]
+    [Compare(nameof(Password), ErrorMessage = "Passwords do not match.")]
+    [Display(Name = "Confirm password")]
     public string ConfirmPassword { get; set; } = string.Empty;
 }

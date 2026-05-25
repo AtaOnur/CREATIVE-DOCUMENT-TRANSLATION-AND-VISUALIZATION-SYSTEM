@@ -10,18 +10,16 @@
  *   3. "Görsel Seç"   → seçili bölge canvas'tan kırpılarak base64 PNG'ye çevrilir;
  *                       önizlemesi yan panelde gösterilir ve AI isteğine
  *                       inputImageBase64 olarak iliştirilir.
- *   4. "OCR Metnini Seslendir" → textarea’daki metin sunucuya gönderilir (OCR motorundan bağımsız), ses blob’u oynatılır.
+ *   4. Chat balonundaki "Seslendir" → metin sunucuya gönderilir; ses çıktısı AI sohbet balonu olarak oynatılır.
  *
  * MODIFICATION NOTES (TR)
  * - Çoklu seçim için selection listesi ve çizim katmanı genişletilebilir.
  * - Tam sayfa OCR ve annotation araçları eklenebilir.
  * - Metin overlay (textLayer) ileride açılabilir.
- * - Workspace durum satırları (#ocr-status, #ai-status): setOcrStatus / setAiStatus üçüncü argüman
- *   { loading: true } ile Bootstrap spinner-border-sm gösterir — "Metni Çıkar", seslendirme (istek +
- *   oynatma), NLP/AI işlemi beklerken kullanılır. Ses oynatımı bitince ended olayı clearOcrStatus() ile
- *   metni kaldırır (sabit "Ses oynatılıyor" kalıntısı olmaz).
+ * - Workspace durum satırları (#ocr-status ve varsa #ai-status): setOcrStatus / setAiStatus üçüncü argüman
+ *   { loading: true } ile Bootstrap spinner-border-sm gösterir. AI işlemleri artık chat balonu içinden yürür.
  * - AI Sohbet (#ai-chat-window) sağ sidebar’ın üstünde; #region-page … #region-height üst toolbar’da (setRegionInfo).
- * - Seslendirme: <audio controls> veya duraklat/durdur UI ileride eklenebilir.
+ * - Seslendirme: chat içi ses balonu gösterilir; sunucu aynı çıktıyı dosya + AiResult olarak notebook'a kaydeder.
  * - Görsel sıkıştırma (JPEG kalite ayarı) büyük bölgeler için eklenebilir.
  * - Zorluk: Orta.
  */
@@ -38,9 +36,10 @@ const pdfUrl = shell.dataset.pdfUrl || "";
 const pagePreviewUrl = shell.dataset.pagePreviewUrl || "";
 const extractUrl = shell.dataset.extractUrl || "";
 const saveOcrUrl = shell.dataset.saveOcrUrl || "";
-// data-narrate-speech-url → Documents/NarrateOcrSpeech (OCR kutusu metni JSON { text } ile gider).
+// data-narrate-speech-url → Documents/NarrateOcrSpeech (OCR kutusu metni JSON { documentId, text } ile gider).
 const narrateSpeechUrl = shell.dataset.narrateSpeechUrl || "";
 const aiProcessUrl = shell.dataset.aiProcessUrl || "";
+const chatSaveUrl = shell.dataset.chatSaveUrl || "";
 const defaultAiModel = shell.dataset.defaultAiModel || "mock-gpt";
 const defaultStyle = shell.dataset.defaultStyle || "Formal";
 const documentId = shell.dataset.documentId || "";
@@ -71,7 +70,7 @@ const btnCancelSelection = document.getElementById("btn-cancel-selection");
 const btnExtract = document.getElementById("btn-extract-text");
 const btnSelectImage = document.getElementById("btn-select-image");
 const btnSaveOcrText = document.getElementById("btn-save-ocr-text");
-// OCR metnini Gemini TTS ile çalar (Details.cshtml id).
+// [TR] Geriye dönük uyumluluk: harici TTS butonu kaldırıldı; varsa aynı chat içi ses akışını tetikler.
 const btnNarrateOcrSpeech = document.getElementById("btn-narrate-ocr-speech");
 const ocrTextarea = document.getElementById("ocr-text-placeholder");
 const ocrStatus = document.getElementById("ocr-status");
@@ -104,17 +103,14 @@ const chatCount = document.getElementById("ai-chat-count");
 const btnClearChat = document.getElementById("btn-clear-chat");
 let chatMessageCount = 0;
 
-// ─── OCR → son ses blob URL’ü (bellek sızıntısını önlemek için yeni istekte revoke) ───
-// [TR] narrateAudioEl: Üzerinde ended ile durum satırını temizlemek ve üst üste oynatmayı kesmek için tutulur.
-// MODIFICATION NOTES (TR): İleride tek Audio örneği + stop() ile güncellenebilir.
-let narrateObjectUrl = null;
-let narrateAudioEl = null;
+// ─── OCR → chat içi Gemini TTS oynatıcı yardımcıları ───
+const NARRATE_SEEK_SECONDS = 10;
 
-function revokeNarrateObjectUrl() {
-  if (narrateObjectUrl) {
-    URL.revokeObjectURL(narrateObjectUrl);
-    narrateObjectUrl = null;
-  }
+function formatNarrateTime(seconds) {
+  if (!Number.isFinite(seconds) || seconds < 0) seconds = 0;
+  const m = Math.floor(seconds / 60);
+  const s = Math.floor(seconds % 60);
+  return `${m}:${s.toString().padStart(2, "0")}`;
 }
 
 const elPage = document.getElementById("region-page");
@@ -306,7 +302,7 @@ function renderCollapsibleText(text, { muted = false } = {}) {
   //      (bkz. attachShowMoreHandler). İlk durumda collapsed, buton "Devamını göster"
   return (
     `<p class="${cls}">${safe}</p>` +
-    `<button type="button" class="ai-chat-show-more" data-role="chat-show-more">Devamını göster</button>`
+    `<button type="button" class="ai-chat-show-more" data-role="chat-show-more">Show more</button>`
   );
 }
 
@@ -321,7 +317,7 @@ function attachShowMoreHandler() {
     const bubble = btn.previousElementSibling;
     if (!bubble?.classList?.contains("ai-chat-bubble-text--collapsible")) return;
     const expanded = bubble.classList.toggle("is-expanded");
-    btn.textContent = expanded ? "Daha az göster" : "Devamını göster";
+    btn.textContent = expanded ? "Show less" : "Show more";
     // Expanded değişince scroll durumu bozulmasın — kullanıcı zaten balonun
     // başında değilse sohbeti olduğu yerde tut.
   });
@@ -335,6 +331,21 @@ function attachShowMoreHandler() {
 const AI_CHAT_STORAGE_PREFIX = "pdf_bitirme_ai_chat_v1";
 // [TR] Views/Ai/Result + wwwroot/js/ai-result-chat-history.mjs aynı prefix + documentId ile okur — değişirse orası da güncellenmeli.
 
+const AI_CHAT_OPERATION_DEFS = [
+  { op: "Translate", label: "Translate", icon: "🌐", needsText: true },
+  { op: "Summarize", label: "Summarize", icon: "🧾", needsText: true },
+  { op: "Rewrite", label: "Rewrite", icon: "✍️", needsText: true },
+  { op: "CreativeWrite", label: "Creative", icon: "✨", needsText: true },
+  { op: "Explanation", label: "Explain", icon: "💡", needsAny: true },
+  { op: "Visualize", label: "Visualize", icon: "🖼️", needsAny: true },
+  { op: "Math", label: "Math", icon: "📈", needsAny: true },
+  { op: "Narrate", label: "Narrate", icon: "🔊", needsText: true },
+];
+let aiChatSourceSeq = 0;
+const aiChatSources = new Map();
+let lastOcrChatSourceId = null;
+let lastImageChatSourceId = null;
+
 function getAiChatStorageKey() {
   return `${AI_CHAT_STORAGE_PREFIX}:${documentId}`;
 }
@@ -342,7 +353,7 @@ function getAiChatStorageKey() {
 function persistAiChat() {
   if (!documentId || !chatWindow) return;
   const msgs = [...chatWindow.querySelectorAll(".ai-chat-message")].filter(
-    (n) => !n.querySelector(".ai-chat-typing")
+    (n) => !n.querySelector(".ai-chat-typing") && !n.querySelector(".ai-chat-audio-player")
   );
   const html = msgs.map((n) => n.outerHTML).join("");
   try {
@@ -353,8 +364,30 @@ function persistAiChat() {
     }
     localStorage.setItem(key, JSON.stringify({ v: 1, html }));
   } catch (e) {
-    console.warn("AI sohbet yerel depoya yazılamadı:", e);
+    console.warn("AI chat could not be written to local storage:", e);
   }
+}
+
+function saveChatMessageToServer({ role, messageType, text, imageUrl, audioUrl, resultUrl }) {
+  if (!chatSaveUrl || !documentId) return;
+  fetch(chatSaveUrl, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      RequestVerificationToken: antiForgeryToken,
+    },
+    body: JSON.stringify({
+      documentId,
+      role,
+      messageType,
+      text: text || "",
+      imageUrl: imageUrl || "",
+      audioUrl: audioUrl || "",
+      resultUrl: resultUrl || "",
+    }),
+  }).catch(() => {
+    // [TR] Admin gorunurlugu icin arka plan kaydi; sohbet akisini bozmasin.
+  });
 }
 
 function restoreAiChat() {
@@ -392,13 +425,57 @@ function buildReactionChips(reactions) {
   return `<div class="ai-chat-reactions">${items}</div>`;
 }
 
-// [TR] Kullanıcı mesajı ekle. Görsel ve/veya metin + opsiyonel prompt + reactions.
-function appendUserMessage({ imageDataUrl, contentText, prompt, reactions }) {
+function buildChatOperationButtons(sourceId, { hasText, hasImage }) {
+  if (!sourceId) return "";
+  const buttons = AI_CHAT_OPERATION_DEFS
+    .filter((d) => (d.needsText ? hasText : d.needsAny ? hasText || hasImage : true))
+    .map(
+      (d) =>
+        `<button type="button" class="ai-chat-op-button" data-role="chat-op" data-source-id="${escapeHtml(sourceId)}" data-operation="${escapeHtml(d.op)}">` +
+        `<span aria-hidden="true">${d.icon}</span><span>${escapeHtml(d.label)}</span>` +
+        "</button>"
+    )
+    .join("");
+  return `<div class="ai-chat-op-row" aria-label="AI operations">${buttons}</div>`;
+}
+
+function createAiChatSource({ contentText, imageDataUrl, imageBase64, imageMimeType }) {
+  const sourceId = `chat-src-${Date.now()}-${++aiChatSourceSeq}`;
+  aiChatSources.set(sourceId, {
+    text: contentText || "",
+    imageDataUrl: imageDataUrl || null,
+    imageBase64: imageBase64 || null,
+    imageMimeType: imageMimeType || null,
+  });
+  return sourceId;
+}
+
+function updateAiChatSourceText(sourceId, text) {
+  if (!sourceId || !aiChatSources.has(sourceId)) return false;
+  const source = aiChatSources.get(sourceId);
+  source.text = text || "";
+  aiChatSources.set(sourceId, source);
+
+  const node = chatWindow?.querySelector(`[data-source-id="${sourceId}"]`);
+  const textHost = node?.querySelector?.('[data-role="chat-source-text"]');
+  if (textHost) {
+    textHost.innerHTML = (text || "").trim()
+      ? renderCollapsibleText(text)
+      : '<p class="ai-chat-bubble-text text-muted"><em>(text is empty)</em></p>';
+  }
+  attachShowMoreHandler();
+  persistAiChat();
+  return true;
+}
+
+// [TR] Kullanıcı mesajı ekle. Görsel/metin + opsiyonel prompt + reactions + chat içi operasyon kısayolları.
+function appendUserMessage({ imageDataUrl, contentText, prompt, reactions, sourceId }) {
   if (!chatWindow) return null;
   ensureChatVisible();
 
   const wrap = document.createElement("div");
   wrap.className = "ai-chat-message ai-chat-message--user";
+  if (sourceId) wrap.dataset.sourceId = sourceId;
 
   const inner = [];
   inner.push('<div class="ai-chat-bubble-wrap">');
@@ -406,15 +483,17 @@ function appendUserMessage({ imageDataUrl, contentText, prompt, reactions }) {
 
   // [TR] Önce görsel (varsa).
   if (imageDataUrl) {
-    inner.push(`<img src="${imageDataUrl}" alt="Gönderilen görsel" />`);
+    inner.push(`<img src="${imageDataUrl}" alt="Submitted image" />`);
   }
 
   // [TR] Sonra metin (görsel/OCR/serbest metin) — uzunsa "Devamını göster" ile kısalt.
   if (contentText && contentText.trim().length > 0) {
     if (imageDataUrl) inner.push('<div style="height:0.45rem"></div>');
+    inner.push(`<div data-role="chat-source-text" data-source-id="${escapeHtml(sourceId || "")}">`);
     inner.push(renderCollapsibleText(contentText));
+    inner.push("</div>");
   } else if (!imageDataUrl) {
-    inner.push('<p class="ai-chat-bubble-text text-muted"><em>(içerik yok)</em></p>');
+    inner.push('<p class="ai-chat-bubble-text text-muted"><em>(no content)</em></p>');
   }
 
   // [TR] Promptu kesik çizgiyle ayır ve "PROMPT:" etiketi ile göster.
@@ -426,6 +505,12 @@ function appendUserMessage({ imageDataUrl, contentText, prompt, reactions }) {
 
   inner.push("</div>"); // bubble
   inner.push(buildReactionChips(reactions));
+  inner.push(
+    buildChatOperationButtons(sourceId, {
+      hasText: !!(contentText && contentText.trim()),
+      hasImage: !!imageDataUrl,
+    })
+  );
   inner.push("</div>"); // bubble-wrap
 
   wrap.innerHTML = inner.join("");
@@ -434,8 +519,160 @@ function appendUserMessage({ imageDataUrl, contentText, prompt, reactions }) {
   updateChatCount();
   attachShowMoreHandler();
   persistAiChat();
+  saveChatMessageToServer({
+    role: "user",
+    messageType: imageDataUrl ? "image" : "text",
+    text: `${contentText || (imageDataUrl ? "Image selected." : "")}${prompt ? `\n\nPrompt: ${prompt}` : ""}`,
+  });
   scrollChatToBottom();
   return wrap;
+}
+
+function buildChatModelOptions() {
+  if (!aiModel) return '<option value="mock-gpt">Default model</option>';
+  return [...aiModel.options]
+    .map((o) => {
+      const selected = o.value === (aiModel.value || defaultAiModel) ? " selected" : "";
+      return `<option value="${escapeHtml(o.value)}"${selected}>${escapeHtml(o.textContent || o.value)}</option>`;
+    })
+    .join("");
+}
+
+async function appendChatOperationSetup(sourceId, operation) {
+  if (!chatWindow) return;
+  const source = aiChatSources.get(sourceId);
+  if (!source) {
+    replaceWithAiMessage(null, {
+      text: "This chat card came from an older session, so its operation data is no longer in memory. Please select the text or image again.",
+      isError: true,
+    });
+    return;
+  }
+  if (aiOperation) aiOperation.value = operation;
+  if (typeof loadModelsForTask === "function" && operation !== "Narrate") {
+    await loadModelsForTask(operation);
+  }
+
+  ensureChatVisible();
+  const setupId = `chat-setup-${Date.now()}-${Math.random().toString(16).slice(2)}`;
+  const opLabel = AI_CHAT_OPERATION_DEFS.find((d) => d.op === operation)?.label || operation;
+  const wrap = document.createElement("div");
+  wrap.className = "ai-chat-message ai-chat-message--ai";
+  wrap.innerHTML = `
+    <div class="ai-chat-bubble-wrap ai-chat-bubble-wrap--wide">
+      <form class="ai-chat-op-form" data-role="chat-op-form" data-source-id="${escapeHtml(sourceId)}" data-operation="${escapeHtml(operation)}" id="${escapeHtml(setupId)}">
+        <div class="ai-chat-op-form__title">${escapeHtml(opLabel)} settings</div>
+        <div class="ai-chat-op-form__grid">
+          <label class="ai-chat-op-field ${operation === "Translate" ? "" : "d-none"}">
+            <span>Hedef dil</span>
+            <select class="form-select form-select-sm" data-field="targetLanguage">
+              <option value="Turkish">Turkish</option>
+              <option value="English" selected>English</option>
+              <option value="German">German</option>
+              <option value="French">French</option>
+              <option value="Spanish">Spanish</option>
+              <option value="Italian">Italian</option>
+              <option value="Portuguese">Portuguese</option>
+              <option value="Russian">Russian</option>
+              <option value="Arabic">Arabic</option>
+              <option value="Chinese">Chinese</option>
+              <option value="Japanese">Japanese</option>
+              <option value="Korean">Korean</option>
+            </select>
+          </label>
+          <label class="ai-chat-op-field">
+            <span>Stil</span>
+            <select class="form-select form-select-sm" data-field="style">
+              <option value="Formal"${defaultStyle === "Formal" ? " selected" : ""}>Formal</option>
+              <option value="Academic"${defaultStyle === "Academic" ? " selected" : ""}>Academic</option>
+              <option value="Simplified"${defaultStyle === "Simplified" ? " selected" : ""}>Simplified</option>
+            </select>
+          </label>
+          <label class="ai-chat-op-field">
+            <span>Model</span>
+            <select class="form-select form-select-sm" data-field="modelName">${buildChatModelOptions()}</select>
+          </label>
+        </div>
+        <label class="ai-chat-op-field mt-2">
+          <span>Custom prompt</span>
+          <textarea class="form-control form-control-sm" rows="2" data-field="customInstruction" placeholder="Add an optional instruction"></textarea>
+        </label>
+        <div class="ai-chat-op-form__actions">
+          <button type="submit" class="btn btn-sm btn-dark">Run</button>
+          <button type="button" class="btn btn-sm btn-outline-secondary" data-role="chat-op-cancel">Cancel</button>
+        </div>
+      </form>
+    </div>`;
+  chatWindow.appendChild(wrap);
+  scrollChatToBottom();
+}
+
+async function runChatOperation(form) {
+  const source = aiChatSources.get(form.dataset.sourceId || "");
+  const operation = form.dataset.operation || "Explanation";
+  if (!source || !aiProcessUrl || !documentId) return;
+
+  const fd = (name) => form.querySelector(`[data-field="${name}"]`)?.value || "";
+  const payload = {
+    documentId,
+    operationType: operation,
+    modelName: fd("modelName") || aiModel?.value || defaultAiModel,
+    targetLanguage: fd("targetLanguage") || aiTargetLanguage?.value || "English",
+    style: fd("style") || aiStyle?.value || defaultStyle,
+    customInstruction: fd("customInstruction"),
+    inputText: source.text || "",
+    sourcePageNumber: currentRect?.pageNumber || currentPage,
+    inputImageBase64: source.imageBase64 || null,
+    inputImageMimeType: source.imageMimeType || null,
+  };
+
+  const reactions = [
+    { kind: "operation", label: operation },
+    { kind: "model", label: payload.modelName },
+    { kind: "style", label: payload.style },
+  ];
+  if (operation === "Translate") reactions.push({ kind: "lang", label: `→ ${payload.targetLanguage}` });
+
+  appendUserMessage({
+    imageDataUrl: null,
+    contentText: `AI operation: ${operation}`,
+    prompt: payload.customInstruction,
+    reactions,
+  });
+
+  const typingNode = appendAiTypingPlaceholder();
+  form.closest(".ai-chat-message")?.remove();
+  setAiStatus("info", "AI operation is running from chat...", { loading: true });
+
+  try {
+    const r = await fetch(aiProcessUrl, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        RequestVerificationToken: antiForgeryToken,
+      },
+      body: JSON.stringify(payload),
+    });
+    const res = await r.json();
+    if (!res.ok) {
+      setAiStatus("error", res.message || "AI operation failed.");
+      replaceWithAiMessage(typingNode, { text: res.message || "AI operation failed.", isError: true });
+      return;
+    }
+    setAiStatus("success", res.message || "AI operation completed.");
+    replaceWithAiMessage(typingNode, {
+      text: res.outputText || "",
+      imageUrl: res.outputImageUrl || null,
+      resultUrl: res.resultUrl || null,
+    });
+    if (aiResultLink && res.resultUrl) {
+      aiResultLink.href = res.resultUrl;
+      aiResultLink.classList.remove("d-none");
+    }
+  } catch {
+    setAiStatus("error", "An error occurred during the AI request.");
+    replaceWithAiMessage(typingNode, { text: "An error occurred during the AI request.", isError: true });
+  }
 }
 
 // [TR] AI yazıyor... bekleme balonu — istek tamamlandığında kaldırılır/ değiştirilir.
@@ -474,16 +711,16 @@ function replaceWithAiMessage(typingNode, { text, imageUrl, isError, resultUrl }
   }
   if (imageUrl) {
     if (text) parts.push('<div style="height:0.45rem"></div>');
-    parts.push(`<img src="${escapeHtml(imageUrl)}" alt="AI cevabı (görsel)" />`);
+    parts.push(`<img src="${escapeHtml(imageUrl)}" alt="AI response image" />`);
   }
   if (!text && !imageUrl) {
-    parts.push('<p class="ai-chat-bubble-text text-muted"><em>(boş cevap)</em></p>');
+    parts.push('<p class="ai-chat-bubble-text text-muted"><em>(empty response)</em></p>');
   }
 
   parts.push("</div>"); // bubble
 
   if (resultUrl) {
-    parts.push(`<div class="ai-chat-meta"><a class="link-primary" href="${escapeHtml(resultUrl)}">Detaylı sonucu aç →</a></div>`);
+    parts.push(`<div class="ai-chat-meta"><a class="link-primary" href="${escapeHtml(resultUrl)}">Open detailed result →</a></div>`);
   }
   parts.push("</div>"); // wrap
 
@@ -492,6 +729,13 @@ function replaceWithAiMessage(typingNode, { text, imageUrl, isError, resultUrl }
   updateChatCount();
   attachShowMoreHandler();
   persistAiChat();
+  saveChatMessageToServer({
+    role: "ai",
+    messageType: isError ? "error" : imageUrl ? "image" : "text",
+    text: text || (imageUrl ? "Visual AI output." : ""),
+    imageUrl: imageUrl || "",
+    resultUrl: resultUrl || "",
+  });
   scrollChatToBottom();
   return wrap;
 }
@@ -512,6 +756,40 @@ if (btnClearChat) {
       clone.classList.remove("d-none");
       chatWindow.appendChild(clone);
     }
+  });
+}
+
+if (chatWindow) {
+  chatWindow.addEventListener("click", (ev) => {
+    const opBtn = ev.target?.closest?.('[data-role="chat-op"]');
+    if (opBtn) {
+      const sourceId = opBtn.dataset.sourceId || "";
+      const operation = opBtn.dataset.operation || "";
+      const source = aiChatSources.get(sourceId);
+      if (operation === "Narrate") {
+        if (!source?.text?.trim()) {
+          setOcrStatus("error", "No text found for narration.");
+          return;
+        }
+        createNarrationInChat(source.text, opBtn);
+        return;
+      }
+      appendChatOperationSetup(sourceId, operation);
+      return;
+    }
+
+    const cancelBtn = ev.target?.closest?.('[data-role="chat-op-cancel"]');
+    if (cancelBtn) {
+      cancelBtn.closest(".ai-chat-message")?.remove();
+      persistAiChat();
+    }
+  });
+
+  chatWindow.addEventListener("submit", (ev) => {
+    const form = ev.target?.closest?.('[data-role="chat-op-form"]');
+    if (!form) return;
+    ev.preventDefault();
+    runChatOperation(form);
   });
 }
 
@@ -568,7 +846,7 @@ async function renderPage(pageNumber) {
       await page.render({ canvasContext: ctx, viewport }).promise;
       rendered = true;
     } catch (err) {
-      console.warn("pdf.js render hatası, server fallback denenecek:", err);
+      console.warn("pdf.js render error; server fallback will be tried:", err);
     }
   }
 
@@ -701,7 +979,7 @@ btnExtract.addEventListener("click", () => {
 
   // [TR] Sunucu OCR (Tesseract/Paddle) uzun sürebilir — #ocr-status üzerinde spinner gösterilir.
   btnExtract.disabled = true;
-  setOcrStatus("info", `OCR çalışıyor... (${selectedEngine || "varsayılan"})`, {
+  setOcrStatus("info", `OCR is running... (${selectedEngine || "default"})`, {
     loading: true,
   });
   fetch(extractUrl, {
@@ -715,15 +993,27 @@ btnExtract.addEventListener("click", () => {
     .then((r) => r.json())
     .then((res) => {
       if (!res.ok) {
-        setOcrStatus("error", res.message || "OCR başarısız.");
+        setOcrStatus("error", res.message || "OCR failed.");
         return;
       }
       if (ocrTextarea) ocrTextarea.value = res.text || "";
       lastOcrResultId = res.ocrResultId || "";
       if (btnSaveOcrText) btnSaveOcrText.disabled = !lastOcrResultId;
-      setOcrStatus("success", res.message || "OCR tamamlandı.");
+      setOcrStatus("success", res.message || "OCR completed.");
+      if ((res.text || "").trim()) {
+        const sourceId = createAiChatSource({ contentText: res.text || "" });
+        lastOcrChatSourceId = sourceId;
+        appendUserMessage({
+          contentText: res.text || "",
+          reactions: [
+            { kind: "operation", label: "OCR" },
+            { kind: "model", label: selectedEngine || "Default" },
+          ],
+          sourceId,
+        });
+      }
     })
-    .catch(() => setOcrStatus("error", "OCR isteği sırasında hata oluştu."))
+    .catch(() => setOcrStatus("error", "An error occurred during the OCR request."))
     .finally(() => {
       setSelectionUi();
     });
@@ -782,17 +1072,30 @@ function captureSelectionAsImage() {
 if (btnSelectImage) {
   btnSelectImage.addEventListener("click", () => {
     if (!currentRect) {
-      setOcrStatus("error", "Önce PDF üzerinde bir bölge seçin.");
+      setOcrStatus("error", "Select a region on the PDF first.");
       return;
     }
     const captured = captureSelectionAsImage();
     if (!captured) {
-      setOcrStatus("error", "Görsel yakalanamadı.");
+      setOcrStatus("error", "The image could not be captured.");
       return;
     }
     capturedImage = { base64: captured.base64, mimeType: captured.mimeType };
     showCapturedImagePreview(captured.dataUrl);
-    setOcrStatus("success", "Görsel yakalandı. AI ile İşle tıklayarak prompt ile gönderebilirsiniz.");
+    const sourceId = createAiChatSource({
+      imageDataUrl: captured.dataUrl,
+      imageBase64: captured.base64,
+      imageMimeType: captured.mimeType,
+      contentText: ocrTextarea?.value || "",
+    });
+    lastImageChatSourceId = sourceId;
+    appendUserMessage({
+      imageDataUrl: captured.dataUrl,
+      contentText: ocrTextarea?.value || "",
+      reactions: [{ kind: "operation", label: "Select Image" }],
+      sourceId,
+    });
+    setOcrStatus("success", "Image captured. Use the chat operation buttons to send it with a prompt.");
   });
 }
 
@@ -822,119 +1125,222 @@ if (btnSaveOcrText) {
       .then((r) => r.json())
       .then((res) => {
         if (!res.ok) {
-          setOcrStatus("error", res.message || "Kaydetme başarısız.");
+          setOcrStatus("error", res.message || "Save failed.");
           btnSaveOcrText.disabled = false;
           return;
+        }
+        const savedText = ocrTextarea.value || "";
+        const updatedOcr = updateAiChatSourceText(lastOcrChatSourceId, savedText);
+        const updatedImage = updateAiChatSourceText(lastImageChatSourceId, savedText);
+        if (!updatedOcr && savedText.trim()) {
+          const sourceId = createAiChatSource({ contentText: savedText });
+          lastOcrChatSourceId = sourceId;
+          appendUserMessage({
+            contentText: savedText,
+            reactions: [
+              { kind: "operation", label: "OCR Updated" },
+              { kind: "style", label: "Saved text" },
+            ],
+            sourceId,
+          });
+        } else if (updatedOcr || updatedImage) {
+          persistAiChat();
         }
         setOcrStatus("success", res.message || "OCR metni kaydedildi.");
         btnSaveOcrText.disabled = false;
       })
       .catch(() => {
-        setOcrStatus("error", "Kaydetme sırasında hata oluştu.");
+        setOcrStatus("error", "An error occurred while saving.");
         btnSaveOcrText.disabled = false;
       });
   });
 }
 
-// ─── OCR metni Gemini TTS seslendirme (sunucu proxy; Paddle/Tesseract OCR’dan ayrı) ───
-// [TR] Textarea içeriği JSON { text } ile gider; sunucu Gemini’den ses alır — istemci blob ile çalar.
-// [TR] Spinner: API + oynatma boyunca; audio "ended" → clearOcrStatus (mesaj kalıntısı yok).
-// MODIFICATION NOTES (TR): Görünür oynatıcı veya indir bağlantısı ileride eklenebilir.
-if (btnNarrateOcrSpeech && ocrTextarea) {
-  btnNarrateOcrSpeech.addEventListener("click", async () => {
-    const text = (ocrTextarea.value || "").trim();
-    if (!narrateSpeechUrl) {
-      setOcrStatus("error", "Seslendirme uç noktası yapılandırılmadı.");
-      return;
+// ─── OCR/Gemini TTS → AI sohbet içinde ses çıktısı ──────────────────────────
+// [TR] Ses artık ayrı panelde değil; chat içinde AI balonu olarak üretilir.
+//      Sunucu kaydı dönerse player kalıcı /ai-audio URL'sini kullanır ve notebook linki gösterir.
+function appendChatNarrationMessage(audioSource, sourceText, savedInfo = {}) {
+  if (!chatWindow) return null;
+  ensureChatVisible();
+
+  const objectUrl = typeof audioSource === "string" ? audioSource : URL.createObjectURL(audioSource);
+  const audioEl = new Audio(objectUrl);
+  const notebookUrl = savedInfo.aiResultId ? `/Notebook/Details/${encodeURIComponent(savedInfo.aiResultId)}` : "";
+  const wrap = document.createElement("div");
+  wrap.className = "ai-chat-message ai-chat-message--ai";
+  wrap.innerHTML = `
+    <div class="ai-chat-bubble-wrap ai-chat-bubble-wrap--wide">
+      <div class="ai-chat-bubble">
+        <div class="ai-chat-audio-player">
+          <div class="ai-chat-audio-player__title">Audio output</div>
+          <div class="ai-chat-audio-player__controls">
+            <button type="button" class="ai-chat-audio-player__btn" data-role="audio-rewind" title="10 saniye geri" aria-label="10 saniye geri">⏮</button>
+            <button type="button" class="ai-chat-audio-player__btn ai-chat-audio-player__btn--main" data-role="audio-play" title="Play" aria-label="Play">
+              <span data-role="audio-play-icon">▶</span>
+            </button>
+            <button type="button" class="ai-chat-audio-player__btn" data-role="audio-stop" title="Stop and rewind" aria-label="Stop and rewind">■</button>
+            <button type="button" class="ai-chat-audio-player__btn" data-role="audio-replay" title="Replay" aria-label="Replay">↻</button>
+            <button type="button" class="ai-chat-audio-player__btn" data-role="audio-forward" title="10 saniye ileri" aria-label="10 saniye ileri">⏭</button>
+            <span class="ai-chat-audio-player__time" data-role="audio-time">0:00</span>
+          </div>
+        </div>
+      </div>
+      <div class="ai-chat-meta">
+        Gemini TTS · ${escapeHtml((sourceText || "").slice(0, 72))}${sourceText && sourceText.length > 72 ? "..." : ""}
+        ${notebookUrl ? ` · <a href="${notebookUrl}">Open in Notebook</a>` : ""}
+      </div>
+    </div>`;
+
+  const playBtn = wrap.querySelector('[data-role="audio-play"]');
+  const playIcon = wrap.querySelector('[data-role="audio-play-icon"]');
+  const timeEl = wrap.querySelector('[data-role="audio-time"]');
+  const setTime = () => {
+    if (timeEl) timeEl.textContent = formatNarrateTime(audioEl.currentTime);
+  };
+  const setPlaying = () => {
+    if (!playIcon || !playBtn) return;
+    const playing = !audioEl.paused && !audioEl.ended;
+    playIcon.textContent = playing ? "⏸" : "▶";
+    const label = playing ? "Pause" : "Play";
+    playBtn.title = label;
+    playBtn.setAttribute("aria-label", label);
+  };
+
+  wrap.querySelector('[data-role="audio-rewind"]')?.addEventListener("click", () => {
+    audioEl.currentTime = Math.max(0, audioEl.currentTime - NARRATE_SEEK_SECONDS);
+    setTime();
+  });
+  wrap.querySelector('[data-role="audio-forward"]')?.addEventListener("click", () => {
+    const dur = audioEl.duration;
+    const max = Number.isFinite(dur) && dur > 0 ? dur : audioEl.currentTime + NARRATE_SEEK_SECONDS;
+    audioEl.currentTime = Math.min(max, audioEl.currentTime + NARRATE_SEEK_SECONDS);
+    setTime();
+  });
+  wrap.querySelector('[data-role="audio-stop"]')?.addEventListener("click", () => {
+    audioEl.pause();
+    audioEl.currentTime = 0;
+    setTime();
+    setPlaying();
+  });
+  wrap.querySelector('[data-role="audio-replay"]')?.addEventListener("click", async () => {
+    audioEl.currentTime = 0;
+    setTime();
+    try {
+      await audioEl.play();
+    } catch (e) {
+      setOcrStatus("error", e?.message || "Audio could not be replayed.");
     }
-    if (!text) {
-      setOcrStatus("error", "Önce OCR çıktısı oluşturun veya metin yazın.");
-      return;
+  });
+  playBtn?.addEventListener("click", async () => {
+    try {
+      if (audioEl.paused || audioEl.ended) {
+        if (audioEl.ended) audioEl.currentTime = 0;
+        await audioEl.play();
+      } else {
+        audioEl.pause();
+      }
+    } catch (e) {
+      setOcrStatus("error", e?.message || "Audio could not be played.");
     }
-    btnNarrateOcrSpeech.disabled = true;
-    if (narrateAudioEl) {
+  });
+
+  audioEl.onplay = () => {
+    setPlaying();
+    clearOcrStatus();
+  };
+  audioEl.onpause = () => {
+    setTime();
+    setPlaying();
+  };
+  audioEl.onended = () => {
+    setTime();
+    setPlaying();
+  };
+  audioEl.ontimeupdate = setTime;
+
+  chatWindow.appendChild(wrap);
+  chatMessageCount += 1;
+  updateChatCount();
+  saveChatMessageToServer({
+    role: "ai",
+    messageType: "audio",
+    text: `Audio output: ${(sourceText || "").slice(0, 240)}`,
+    audioUrl: savedInfo.audioUrl || (typeof audioSource === "string" ? audioSource : ""),
+    resultUrl: notebookUrl,
+  });
+  scrollChatToBottom();
+
+  audioEl.play().catch(() => {
+    setPlaying();
+  });
+  return wrap;
+}
+
+async function createNarrationInChat(text, triggerButton = null) {
+  const plain = (text || "").trim();
+  if (!narrateSpeechUrl) {
+    setOcrStatus("error", "Narration endpoint is not configured.");
+    return;
+  }
+  if (!plain) {
+    setOcrStatus("error", "No text found for narration.");
+    return;
+  }
+
+  if (triggerButton) triggerButton.disabled = true;
+  const typingNode = appendAiTypingPlaceholder();
+  setOcrStatus("info", "Metin Gemini TTS ile seslendiriliyor...", { loading: true });
+  try {
+    const r = await fetch(narrateSpeechUrl, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        RequestVerificationToken: antiForgeryToken,
+      },
+      body: JSON.stringify({ documentId, text: plain }),
+    });
+    const ct = (r.headers.get("content-type") || "").toLowerCase();
+    if (!r.ok) {
+      let msg = "Narration failed.";
       try {
-        narrateAudioEl.pause();
+        if (ct.includes("application/json")) {
+          const j = await r.json();
+          if (j?.message) msg = j.message;
+        } else {
+          const t = await r.text();
+          if (t) msg = t.slice(0, 400);
+        }
       } catch {
         /* yoksay */
       }
-      narrateAudioEl.onended = null;
-      narrateAudioEl.removeAttribute("src");
-      narrateAudioEl = null;
+      setOcrStatus("error", msg);
+      replaceWithAiMessage(typingNode, { text: msg, isError: true });
+      return;
     }
-    revokeNarrateObjectUrl();
-    setOcrStatus("info", "Metin Gemini TTS ile seslendiriliyor...", { loading: true });
-    try {
-      const r = await fetch(narrateSpeechUrl, {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          RequestVerificationToken: antiForgeryToken,
-        },
-        body: JSON.stringify({ text }),
-      });
-      const ct = (r.headers.get("content-type") || "").toLowerCase();
-      if (!r.ok) {
-        let msg = "Seslendirme başarısız.";
-        try {
-          if (ct.includes("application/json")) {
-            const j = await r.json();
-            if (j?.message) msg = j.message;
-          } else {
-            const t = await r.text();
-            if (t) msg = t.slice(0, 400);
-          }
-        } catch {
-          /* yoksay */
-        }
-        setOcrStatus("error", msg);
-        return;
-      }
-      if (!ct.includes("audio")) {
-        setOcrStatus("error", "Beklenmeyen yanıt (ses dosyası değil).");
-        return;
-      }
-      const blob = await r.blob();
-      narrateObjectUrl = URL.createObjectURL(blob);
-      const audioEl = new Audio(narrateObjectUrl);
-      narrateAudioEl = audioEl;
-      audioEl.onended = () => {
-        clearOcrStatus();
-        revokeNarrateObjectUrl();
-        audioEl.onended = null;
-        if (narrateAudioEl === audioEl) narrateAudioEl = null;
-      };
-
-      setOcrStatus("info", "Ses oynatılıyor...", { loading: true });
-
-      try {
-        await audioEl.play();
-      } catch (playErr) {
-        const pm =
-          playErr && typeof playErr.message === "string"
-            ? playErr.message
-            : "Tarayıcı sesi çalamadı (ör. biçim desteklenmiyor).";
-        setOcrStatus(
-          "error",
-          pm.length > 240 ? `${pm.slice(0, 240)}…` : pm
-        );
-        audioEl.onended = null;
-        revokeNarrateObjectUrl();
-        if (narrateAudioEl === audioEl) narrateAudioEl = null;
-        return;
-      }
-    } catch (e) {
-      const msg =
-        e && typeof e.message === "string"
-          ? e.message
-          : "Seslendirme isteği sırasında hata oluştu.";
-      setOcrStatus(
-        "error",
-        msg.length > 240 ? `${msg.slice(0, 240)}…` : msg
-      );
-    } finally {
-      btnNarrateOcrSpeech.disabled = false;
+    if (!ct.includes("audio")) {
+      const msg = "Unexpected response (not an audio file).";
+      setOcrStatus("error", msg);
+      replaceWithAiMessage(typingNode, { text: msg, isError: true });
+      return;
     }
+    const aiResultId = r.headers.get("x-ai-result-id") || "";
+    const audioUrl = r.headers.get("x-audio-url") || "";
+    const blob = await r.blob();
+    typingNode?.remove();
+    appendChatNarrationMessage(audioUrl || blob, plain, { aiResultId, audioUrl });
+    clearOcrStatus();
+  } catch (e) {
+    const msg = e?.message || "An error occurred during the narration request.";
+    setOcrStatus("error", msg.length > 240 ? `${msg.slice(0, 240)}...` : msg);
+    replaceWithAiMessage(typingNode, { text: msg, isError: true });
+  } finally {
+    if (triggerButton) triggerButton.disabled = false;
+  }
+}
+
+if (btnNarrateOcrSpeech && ocrTextarea) {
+  btnNarrateOcrSpeech.addEventListener("click", () => {
+    createNarrationInChat(ocrTextarea.value || "", btnNarrateOcrSpeech);
   });
 }
 
@@ -951,7 +1357,7 @@ if (btnAiProcess) {
     if (!inputText && !hasImage && !customInstruction) {
       setAiStatus(
         "error",
-        "OCR metni, yakalanmış bir görsel veya özel yönerge gerekli."
+        "OCR text, a captured image, or a custom instruction is required."
       );
       return;
     }
@@ -992,12 +1398,19 @@ if (btnAiProcess) {
     }
 
     const userImageDataUrl = hasImage && capturedImagePreview ? capturedImagePreview.src : null;
+    const sourceId = createAiChatSource({
+      contentText: inputText,
+      imageDataUrl: userImageDataUrl,
+      imageBase64: hasImage ? capturedImage.base64 : null,
+      imageMimeType: hasImage ? capturedImage.mimeType : null,
+    });
 
     appendUserMessage({
       imageDataUrl: userImageDataUrl,
       contentText: inputText,
       prompt: customInstruction,
       reactions,
+      sourceId,
     });
 
     // ─── AI mesajı için "yazıyor..." balonu ekle ───────────────────────────
@@ -1006,7 +1419,7 @@ if (btnAiProcess) {
     // [TR] NLP görevi: ağ gecikmesi uzun olabildiği için #ai-status satırında spinner (+ "AI işlemi çalışıyor...").
     btnAiProcess.disabled = true;
     if (aiResultLink) aiResultLink.classList.add("d-none");
-    setAiStatus("info", "AI işlemi çalışıyor...", { loading: true });
+    setAiStatus("info", "AI operation is running...", { loading: true });
 
     fetch(aiProcessUrl, {
       method: "POST",
@@ -1019,14 +1432,14 @@ if (btnAiProcess) {
       .then((r) => r.json())
       .then((res) => {
         if (!res.ok) {
-          setAiStatus("error", res.message || "AI işlemi başarısız.");
+          setAiStatus("error", res.message || "AI operation failed.");
           replaceWithAiMessage(typingNode, {
-            text: res.message || "AI işlemi başarısız.",
+            text: res.message || "AI operation failed.",
             isError: true,
           });
           return;
         }
-        setAiStatus("success", res.message || "AI işlemi tamamlandı.");
+        setAiStatus("success", res.message || "AI operation completed.");
         replaceWithAiMessage(typingNode, {
           text: res.outputText || "",
           imageUrl: res.outputImageUrl || null,
@@ -1038,9 +1451,9 @@ if (btnAiProcess) {
         }
       })
       .catch(() => {
-        setAiStatus("error", "AI isteği sırasında hata oluştu.");
+        setAiStatus("error", "An error occurred during the AI request.");
         replaceWithAiMessage(typingNode, {
-          text: "AI isteği sırasında hata oluştu.",
+          text: "An error occurred during the AI request.",
           isError: true,
         });
       })
@@ -1077,7 +1490,7 @@ async function loadModelsForTask(task) {
     aiModel.innerHTML = "";
 
     if (!models || models.length === 0) {
-      aiModel.innerHTML = '<option value="">Bu işlem için model bulunamadı</option>';
+      aiModel.innerHTML = '<option value="">No model found for this operation</option>';
       return;
     }
 

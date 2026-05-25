@@ -218,7 +218,7 @@ public class GeminiAiService : IAiService
         };
 
         _logger.LogInformation(
-            "Gemini metin isteği. Model: {Model}, Op: {Op}, ImageAttached: {HasImage}",
+            "Gemini text request. Model: {Model}, Op: {Op}, ImageAttached: {HasImage}",
             model, request.OperationType, !string.IsNullOrWhiteSpace(request.InputImageBase64));
 
         var response = await SendAsync(url, body, cancellationToken);
@@ -243,17 +243,17 @@ public class GeminiAiService : IAiService
         {
             if (truncated)
                 throw new InvalidOperationException(
-                    "Gemini cevap üretmeden token limitini aştı. " +
-                    "Ai:Gemini:MaxOutputTokens değerini arttırın (şu an çok küçük).");
+                    "Gemini reached the token limit before generating a response. " +
+                    "Increase Ai:Gemini:MaxOutputTokens (it is currently too small).");
             throw new InvalidOperationException(
-                $"Gemini geçerli bir metin yanıtı döndürmedi. (finishReason: {finishReason ?? "?"})");
+                $"Gemini did not return a valid text response. (finishReason: {finishReason ?? "?"})");
         }
 
         if (truncated)
         {
-            _logger.LogWarning("Gemini yanıtı MAX_TOKENS nedeniyle kesildi. Model: {Model}", model);
-            text += "\n\n[⚠ Not: Cevap maksimum token limitine ulaştığı için kesilmiş olabilir. " +
-                    "Daha uzun çıktı için appsettings → Ai:Gemini:MaxOutputTokens değerini arttırın.]";
+            _logger.LogWarning("Gemini response was truncated because of MAX_TOKENS. Model: {Model}", model);
+            text += "\n\n[Note: The response may have been truncated because it reached the maximum token limit. " +
+                    "For longer output, increase Ai:Gemini:MaxOutputTokens in appsettings.]";
         }
 
         return new AiServiceResult { OutputText = text };
@@ -285,7 +285,7 @@ public class GeminiAiService : IAiService
         };
 
         _logger.LogInformation(
-            "Gemini görsel isteği. Model: {Model}, ReferenceImage: {HasImage}",
+            "Gemini image request. Model: {Model}, ReferenceImage: {HasImage}",
             imageModel, !string.IsNullOrWhiteSpace(request.InputImageBase64));
 
         var response = await SendAsync(url, body, cancellationToken);
@@ -294,7 +294,7 @@ public class GeminiAiService : IAiService
         // [TR] Yanıt içindeki tüm part'ları tara; inlineData (görsel) ve text parçalarını ayır.
         var parts = geminiResp?.Candidates?.FirstOrDefault()?.Content?.Parts;
         if (parts == null || parts.Count == 0)
-            throw new InvalidOperationException("Gemini görsel yanıtı boş geldi.");
+            throw new InvalidOperationException("Gemini image response was empty.");
 
         // [TR] Görsel parça bul (inlineData dolu olan).
         var imagePart = parts.FirstOrDefault(p => p.InlineData != null);
@@ -304,7 +304,7 @@ public class GeminiAiService : IAiService
             var fallbackText = parts.FirstOrDefault(p => !string.IsNullOrWhiteSpace(p.Text))?.Text ?? "";
             return new AiServiceResult
             {
-                OutputText = $"[Görsel üretilemedi — Model metin yanıtı döndürdü]\n\n{fallbackText}".Trim()
+                OutputText = $"[Image could not be generated - the model returned a text response]\n\n{fallbackText}".Trim()
             };
         }
 
@@ -316,7 +316,7 @@ public class GeminiAiService : IAiService
 
         return new AiServiceResult
         {
-            OutputText = string.IsNullOrWhiteSpace(caption) ? "Görsel başarıyla üretildi." : caption.Trim(),
+            OutputText = string.IsNullOrWhiteSpace(caption) ? "Image generated successfully." : caption.Trim(),
             OutputImageUrl = imageUrl
         };
     }
@@ -335,17 +335,17 @@ public class GeminiAiService : IAiService
         }
         catch (Exception ex)
         {
-            _logger.LogError(ex, "Gemini API bağlantı hatası.");
+            _logger.LogError(ex, "Gemini API connection error.");
             throw new InvalidOperationException(
-                "Gemini API'ye ulaşılamadı. İnternet bağlantısını ve API anahtarını kontrol edin.", ex);
+                "Could not reach the Gemini API. Check the internet connection and API key.", ex);
         }
 
         if (!response.IsSuccessStatusCode)
         {
             var errorBody = await response.Content.ReadAsStringAsync(ct);
-            _logger.LogError("Gemini API hata yanıtı: {Status} | {Body}", response.StatusCode, errorBody);
+            _logger.LogError("Gemini API error response: {Status} | {Body}", response.StatusCode, errorBody);
             throw new InvalidOperationException(
-                $"Gemini API hatası ({(int)response.StatusCode}): {TryParseGeminiError(errorBody)}");
+                $"Gemini API error ({(int)response.StatusCode}): {TryParseGeminiError(errorBody)}");
         }
 
         return response;
@@ -357,7 +357,7 @@ public class GeminiAiService : IAiService
 
         if (geminiResp?.PromptFeedback?.BlockReason != null)
             throw new InvalidOperationException(
-                $"Gemini içerik politikası engeli: {geminiResp.PromptFeedback.BlockReason}");
+                $"Gemini content policy block: {geminiResp.PromptFeedback.BlockReason}");
 
         return geminiResp;
     }
@@ -378,7 +378,7 @@ public class GeminiAiService : IAiService
         var bytes = Convert.FromBase64String(inlineData.Data);
         await File.WriteAllBytesAsync(filePath, bytes, ct);
 
-        _logger.LogInformation("AI görseli kaydedildi: {File}", filePath);
+        _logger.LogInformation("AI image saved: {File}", filePath);
         return $"/ai-images/{fileName}";
     }
 
@@ -420,25 +420,25 @@ public class GeminiAiService : IAiService
             Parameters = new ImagenParameters { SampleCount = 1, AspectRatio = "1:1" }
         };
 
-        _logger.LogInformation("Imagen görsel isteği. Model: {Model}", modelId);
+        _logger.LogInformation("Imagen image request. Model: {Model}", modelId);
 
         var response = await _http.PostAsJsonAsync(url, body, ct);
         var raw      = await response.Content.ReadAsStringAsync(ct);
 
         if (!response.IsSuccessStatusCode)
         {
-            _logger.LogWarning("Imagen API hatası {Status}: {Body}", (int)response.StatusCode, raw);
+            _logger.LogWarning("Imagen API error {Status}: {Body}", (int)response.StatusCode, raw);
 
             // [TR] Imagen modelleri ücretsiz Gemini API key'iyle çalışmaz (Vertex AI billing gerekir).
             //      Kullanıcıya anlamlı bir yönlendirme mesajı döndürülür; uygulama çökmez.
             if ((int)response.StatusCode == 404)
                 throw new InvalidOperationException(
-                    "Imagen modelleri ücretsiz Google AI Studio API anahtarıyla kullanılamaz. " +
-                    "Google Cloud + Vertex AI faturalandırması gerektirir. " +
-                    "Lütfen 'FLUX.1 Schnell' veya 'Stable Diffusion XL' gibi HuggingFace modellerini seçin.");
+                    "Imagen models cannot be used with the free Google AI Studio API key. " +
+                    "Google Cloud + Vertex AI billing is required. " +
+                    "Please select a HuggingFace model such as 'FLUX.1 Schnell' or 'Stable Diffusion XL'.");
 
             throw new InvalidOperationException(
-                $"Gemini Imagen API hatası ({(int)response.StatusCode}): {raw}");
+                $"Gemini Imagen API error ({(int)response.StatusCode}): {raw}");
         }
 
         // [TR] predictions[0].bytesBase64Encoded → base64 PNG/JPEG
@@ -447,14 +447,14 @@ public class GeminiAiService : IAiService
 
         var prediction = imagenResp?.Predictions?.FirstOrDefault();
         if (prediction == null || string.IsNullOrWhiteSpace(prediction.BytesBase64Encoded))
-            throw new InvalidOperationException("Imagen görsel yanıtı boş geldi.");
+            throw new InvalidOperationException("Imagen image response was empty.");
 
         var imageUrl = await SaveBase64ImageAsync(
             new GeminiInlineData { MimeType = prediction.MimeType, Data = prediction.BytesBase64Encoded }, ct);
 
         return new AiServiceResult
         {
-            OutputText     = $"Görsel başarıyla üretildi (Google Imagen — {modelId}).",
+            OutputText     = $"Image generated successfully (Google Imagen - {modelId}).",
             OutputImageUrl = imageUrl
         };
     }
@@ -520,10 +520,10 @@ public class GeminiAiService : IAiService
                 ? instr
                 : req.OperationType switch
                 {
-                    "Translate"     => $"Görseldeki metinleri tespit et ve {tgt} diline çevir. Sadece çevirileri yaz.",
-                    "Summarize"     => "Görselde gördüklerinin kısa bir özetini yaz.",
-                    "Rewrite"       => "Görseli kısa ve net bir paragrafla anlat.",
-                    "CreativeWrite" => $"Görselden ilham alarak {style} tarzında özgün, kısa bir metin yaz.",
+                    "Translate"     => $"Detect the text in the image and translate it into {tgt}. Write only the translations.",
+                    "Summarize"     => "Write a short summary of what you see in the image.",
+                    "Rewrite"       => "Describe the image in a short, clear paragraph.",
+                    "CreativeWrite" => $"Write an original, short text in a {style} style inspired by the image.",
                     "Explanation"   => BuildExplanationInstruction(),
                     "Math" =>
                         """
@@ -531,14 +531,14 @@ public class GeminiAiService : IAiService
                         Briefly explain axes, curves, or numeric patterns in Turkish.
                         Note: For generating a new chart image the user should pick Gemini image model or Wolfram Alpha.
                         """,
-                    _               => "Bu görseli detaylı şekilde açıkla."
+                    _               => "Explain this image in detail."
                 };
 
             return $"""
-                Aşağıdaki görseli analiz et ve şu yönergeyi takip et:
+                Analyze the following image and follow this instruction:
                 {imageInstruction}
 
-                (Bağlam — Belge: {documentTitle})
+                (Context - Document: {documentTitle})
                 """;
         }
 
@@ -546,39 +546,39 @@ public class GeminiAiService : IAiService
         {
             "Translate" =>
                 $"""
-                Sen profesyonel bir çeviri asistanısın. Aşağıdaki metni {tgt} diline çevir.
-                Çeviri stili: {style} (Formal = resmi, Academic = akademik, Simplified = sade).
-                Sadece çevrilmiş metni yaz, açıklama ekleme.
+                You are a professional translation assistant. Translate the following text into {tgt}.
+                Translation style: {style} (Formal = official, Academic = academic, Simplified = plain).
+                Write only the translated text; do not add explanations.
 
-                Kaynak metin (Belge: {documentTitle}):
+                Source text (Document: {documentTitle}):
                 {text}
                 """,
 
             "Summarize" =>
                 $"""
-                Aşağıdaki metni ana noktaları koruyarak özetle. Özet kısa, net ve anlaşılır olmalıdır.
-                Sadece özeti yaz, ek açıklama ekleme.
+                Summarize the following text while preserving the main points. The summary should be short, clear, and understandable.
+                Write only the summary; do not add extra explanations.
 
-                Kaynak metin (Belge: {documentTitle}):
+                Source text (Document: {documentTitle}):
                 {text}
                 """,
 
             "Rewrite" =>
                 $"""
-                Aşağıdaki metni şu talimata göre yeniden yaz: "{instr}"
-                Talimat yoksa metni daha akıcı ve anlaşılır hale getir.
-                Sadece yeniden yazılmış metni yaz.
+                Rewrite the following text according to this instruction: "{instr}"
+                If there is no instruction, make the text more fluent and understandable.
+                Write only the rewritten text.
 
-                Orijinal metin (Belge: {documentTitle}):
+                Original text (Document: {documentTitle}):
                 {text}
                 """,
 
             "CreativeWrite" =>
                 $"""
-                Aşağıdaki metinden ilham alarak {style} tarzında yaratıcı bir metin yaz.
-                Özgün ve akıcı bir dille yaz. Sadece yaratıcı metni yaz.
+                Write a creative text in a {style} style inspired by the following text.
+                Use original and fluent language. Write only the creative text.
 
-                İlham kaynağı (Belge: {documentTitle}):
+                Inspiration source (Document: {documentTitle}):
                 {text}
                 """,
 
@@ -590,28 +590,28 @@ public class GeminiAiService : IAiService
                 $"""
                 {BuildExplanationInstruction()}
 
-                Eğer kullanıcı özel bir yönerge yazdıysa öncelikli olarak ona göre cevap ver:
-                "{(string.IsNullOrWhiteSpace(instr) ? "(yönerge yok)" : instr)}"
+                If the user wrote a custom instruction, prioritize it in your answer:
+                "{(string.IsNullOrWhiteSpace(instr) ? "(no instruction)" : instr)}"
 
-                İncelenecek içerik (Belge: {documentTitle}):
-                {(string.IsNullOrWhiteSpace(text) ? "(yalnızca görsel — metin sağlanmadı)" : text)}
+                Content to analyze (Document: {documentTitle}):
+                {(string.IsNullOrWhiteSpace(text) ? "(image only - no text provided)" : text)}
                 """,
 
             // [TR] Metin-tabanlı Math fallback — doğru model seçilmezse kullanıcıya yönlendirme + özet.
             "Math" =>
                 $"""
-                Bu işlem normalde grafik veya matematik görseli üretir.
-                Görsel çıktı için model olarak "Gemini 3.1 Flash Image Preview" seçin veya Wolfram Alpha kullanın.
+                This operation normally generates a chart or mathematical visual.
+                For visual output, select "Gemini 3.1 Flash Image Preview" as the model or use Wolfram Alpha.
 
-                Şimdilik aşağıdaki içeriği matematiksel açıdan özetleyin ve hangi grafik türünün uygun olduğunu belirtin (Türkçe).
+                For now, summarize the following content mathematically and state which chart type would be suitable.
 
-                Özel yönerge: {(string.IsNullOrWhiteSpace(instr) ? "(yok)" : instr)}
+                Custom instruction: {(string.IsNullOrWhiteSpace(instr) ? "(none)" : instr)}
 
-                İçerik (Belge: {documentTitle}):
-                {(string.IsNullOrWhiteSpace(text) ? "(metin yok — yalnızca görsel multimodal olarak iletildi)" : text)}
+                Content (Document: {documentTitle}):
+                {(string.IsNullOrWhiteSpace(text) ? "(no text - only the image was sent multimodally)" : text)}
                 """,
 
-            _ => $"Aşağıdaki metni işle:\n\n{text}"
+            _ => $"Process the following text:\n\n{text}"
         };
     }
 
@@ -622,26 +622,26 @@ public class GeminiAiService : IAiService
     /// </summary>
     private static string BuildExplanationInstruction() =>
         """
-        Sen analitik bir asistansın. Sana verilen içeriği (metin ve/veya görsel) inceleyip ne olduğunu
-        Türkçe ve net biçimde açıkla. Aşağıdaki üç adımı sırayla uygula:
+        You are an analytical assistant. Review the provided content (text and/or image) and clearly explain what it is.
+        Follow these three steps in order:
 
-        1) İÇERİK TİPİ — Önce içeriğin türünü belirle. Örnekler:
-           bar/çizgi/pasta grafiği, fotoğraf (manzara, nesne, insan, araç, hayvan vb.),
-           ekran görüntüsü, makale, hikâye/edebî metin, tarih metni, kod parçası,
-           sayısal veri tablosu (örn. öğrenci notları), liste, formül, vb.
+        1) CONTENT TYPE - First identify the content type. Examples:
+           bar/line/pie chart, photograph (landscape, object, person, vehicle, animal, etc.),
+           screenshot, article, story/literary text, historical text, code snippet,
+           numerical data table (for example student grades), list, formula, etc.
 
-        2) DETAYLI ANALİZ — İçerikte ne olduğunu somut biçimde anlat:
-           - Görselse: ana özne(ler), arka plan, görünen kişi/nesneler, eylem/olay,
-             metin/etiketler, renk/biçim ipuçları. Mümkünse tanımla (örn. "bu bir bar grafiği:
-             X ekseni dersler, Y ekseni öğrenci sayısı; en yüksek sütun Matematik = 24").
-           - Metinse: konunun ne olduğu, içerdiği kişi/yer/tarih/sayılar, varsa veri yapısı.
-             Sayısal/tablo veri varsa kategorilere ayır ve sayıları say (örn. "AA: 4, BA: 6, BB: 12").
-             Hikâye/tarihî metinde özet + kahramanlar/dönem + ana olaylar.
+        2) DETAILED ANALYSIS - Describe concretely what appears in the content:
+           - If it is visual: main subject(s), background, visible people/objects, action/event,
+             text/labels, color/shape clues. Define it when possible (for example, "this is a bar chart:
+             the X axis is courses, the Y axis is student count; the tallest bar is Mathematics = 24").
+           - If it is text: explain the topic, people/places/dates/numbers it contains, and any data structure.
+             If it includes numerical/table data, group categories and count values (for example, "AA: 4, BA: 6, BB: 12").
+             For story or historical text, include summary + characters/period + main events.
 
-        3) ÇIKARIMLAR — Mümkünse ek bilgi ver: ne işe yarayabilir, hangi konuyla ilgili olduğu,
-           dağılım/desen/eğilim, dikkat çeken anormallikler. Spekülasyon yapacaksan bunu açıkça belirt.
+        3) INSIGHTS - Add useful context when possible: what it could be used for, what topic it relates to,
+           distribution/pattern/trend, or notable anomalies. If you speculate, state that clearly.
 
-        Üslup: maddeler ve kısa paragraflar kullan; gerekiyorsa başlık aç.
+        Style: use bullets and short paragraphs; add headings when useful.
         """;
 
     /// <summary>
@@ -680,6 +680,9 @@ public class GeminiAiService : IAiService
             Create a vivid, detailed illustration inspired by the following text excerpt.
             Style: photorealistic or detailed digital art. Include relevant objects, scenery, and atmosphere.
             Source document: {documentTitle}
+
+            User's extra visual instruction (follow this with priority if present):
+            {(string.IsNullOrWhiteSpace(instr) ? "(none)" : instr)}
 
             Text:
             {excerpt}
@@ -750,7 +753,7 @@ public class GeminiAiService : IAiService
         CancellationToken cancellationToken)
     {
         if (string.IsNullOrWhiteSpace(_options.ApiKey))
-            throw new InvalidOperationException("Gemini API anahtarı yapılandırılmadı.");
+            throw new InvalidOperationException("Gemini API key is not configured.");
 
         var model = string.IsNullOrWhiteSpace(modelOverride) ? _options.DefaultModel : modelOverride.Trim();
         var url = BuildUrl(model);
@@ -778,7 +781,7 @@ public class GeminiAiService : IAiService
         var text = string.Join("\n", allTextParts).Trim();
 
         if (string.IsNullOrWhiteSpace(text))
-            throw new InvalidOperationException("Gemini boş metin döndürdü (planlayıcı).");
+            throw new InvalidOperationException("Gemini returned empty text (planner).");
 
         return text;
     }

@@ -20,7 +20,7 @@ function attachShowMoreHandler(container) {
     const bubble = btn.previousElementSibling;
     if (!bubble?.classList?.contains("ai-chat-bubble-text--collapsible")) return;
     const expanded = bubble.classList.toggle("is-expanded");
-    btn.textContent = expanded ? "Daha az göster" : "Devamını göster";
+    btn.textContent = expanded ? "Show less" : "Show more";
   });
 }
 
@@ -33,7 +33,7 @@ function initAiResultChatHistory() {
   const documentId = mount.dataset.documentId?.trim();
   if (!documentId) {
     emptyEl.textContent =
-      "Belge kimliği bulunamadı; sohbet geçmişi gösterilemiyor.";
+      "Document ID was not found; chat history cannot be displayed.";
     emptyEl.classList.remove("d-none");
     return;
   }
@@ -43,14 +43,14 @@ function initAiResultChatHistory() {
     raw = localStorage.getItem(storageKey(documentId));
   } catch {
     emptyEl.textContent =
-      "Tarayıcı yerel depoya erişilemedi (gizli mod / politika). Sohbet geçmişi gösterilemiyor.";
+      "Browser local storage could not be accessed (private mode or policy). Chat history cannot be displayed.";
     emptyEl.classList.remove("d-none");
     return;
   }
 
   if (!raw) {
     emptyEl.innerHTML =
-      'Bu belge için bu tarayıcıda kayıtlı AI sohbeti yok. Workspace’te <strong>AI ile İşle</strong> kullandığınızda sohbet burada da görünür.';
+      'No AI chat is stored in this browser for this document. When you use <strong>Process with AI</strong> in the workspace, the chat will also appear here.';
     emptyEl.classList.remove("d-none");
     return;
   }
@@ -59,14 +59,14 @@ function initAiResultChatHistory() {
   try {
     data = JSON.parse(raw);
   } catch {
-    emptyEl.textContent = "Sohbet verisi okunamadı.";
+    emptyEl.textContent = "Chat data could not be read.";
     emptyEl.classList.remove("d-none");
     return;
   }
 
   if (!data || typeof data.html !== "string" || !data.html.trim()) {
     emptyEl.textContent =
-      "Kayıtlı sohbet boş. Belge çalışma alanında sohbeti silmiş veya henüz mesaj oluşmamış olabilirsiniz.";
+      "The saved chat is empty. You may have cleared the chat in the document workspace or no messages have been created yet.";
     return;
   }
 

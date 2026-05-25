@@ -49,7 +49,7 @@ public class PaddleOcrService : IOcrService
         CancellationToken cancellationToken = default)
     {
         if (string.IsNullOrWhiteSpace(pdfFilePath) || !File.Exists(pdfFilePath))
-            throw new InvalidOperationException("OCR için PDF dosya yolu bulunamadı.");
+            throw new InvalidOperationException("PDF file path could not be found for OCR.");
 
         var ocrCfg = _config.GetSection("Ocr");
         var pdftoppmPath = ocrCfg["PdfToPpmPath"] ?? "pdftoppm";
@@ -61,7 +61,7 @@ public class PaddleOcrService : IOcrService
         // [TR] Python script'inin konumunu proje kök dizinine göre belirle.
         var scriptPath = Path.Combine(_env.ContentRootPath, "Scripts", "paddle_ocr.py");
         if (!File.Exists(scriptPath))
-            throw new InvalidOperationException($"paddle_ocr.py scripti bulunamadı: {scriptPath}");
+            throw new InvalidOperationException($"paddle_ocr.py script was not found: {scriptPath}");
 
         var tempRoot = Path.Combine(_env.ContentRootPath, "Data", "tmp-ocr");
         Directory.CreateDirectory(tempRoot);
@@ -81,7 +81,7 @@ public class PaddleOcrService : IOcrService
                 cancellationToken);
 
             if (!File.Exists(rasterPng))
-                throw new InvalidOperationException("PDF sayfası görüntüye dönüştürülemedi (pdftoppm çıktısı yok).");
+                throw new InvalidOperationException("PDF page could not be converted to an image (no pdftoppm output).");
 
             // [TR] Adım 2: Kullanıcının seçtiği bölgeyi kırp.
             CropRegion(rasterPng, cropPng, region);
@@ -95,23 +95,23 @@ public class PaddleOcrService : IOcrService
 
             if (exitCode == 2)
                 throw new InvalidOperationException(
-                    "PaddleOCR kurulu değil. Kurulum:\n  pip install paddleocr paddlepaddle");
+                    "PaddleOCR is not installed. Install it with:\n  pip install paddleocr paddlepaddle");
 
             if (exitCode != 0)
             {
-                _logger.LogError("PaddleOCR script hatası. ExitCode={Code} STDERR={Err}", exitCode, stderr);
-                throw new InvalidOperationException($"PaddleOCR script hatası (exit {exitCode}): {stderr?.Trim()}");
+                _logger.LogError("PaddleOCR script error. ExitCode={Code} STDERR={Err}", exitCode, stderr);
+                throw new InvalidOperationException($"PaddleOCR script error (exit {exitCode}): {stderr?.Trim()}");
             }
 
             var text = stdout?.Trim();
             if (string.IsNullOrWhiteSpace(text))
-                text = "[PaddleOCR] Seçili bölgede metin tespit edilemedi.";
+                text = "[PaddleOCR] No text could be detected in the selected region.";
 
             return text;
         }
         catch (Exception ex)
         {
-            _logger.LogError(ex, "PaddleOCR hatası. Doküman: {Doc}", documentTitle);
+            _logger.LogError(ex, "PaddleOCR error. Document: {Doc}", documentTitle);
             throw;
         }
         finally
@@ -133,14 +133,14 @@ public class PaddleOcrService : IOcrService
         CancellationToken cancellationToken = default)
     {
         if (imageBytes == null || imageBytes.Length == 0)
-            throw new InvalidOperationException("OCR için görüntü baytları boş.");
+            throw new InvalidOperationException("Image bytes for OCR are empty.");
 
         var ocrCfg = _config.GetSection("Ocr");
         var pythonPath = ocrCfg["PaddlePythonPath"] ?? "python";
 
         var scriptPath = Path.Combine(_env.ContentRootPath, "Scripts", "paddle_ocr.py");
         if (!File.Exists(scriptPath))
-            throw new InvalidOperationException($"paddle_ocr.py scripti bulunamadı: {scriptPath}");
+            throw new InvalidOperationException($"paddle_ocr.py script was not found: {scriptPath}");
 
         var tempRoot = Path.Combine(_env.ContentRootPath, "Data", "tmp-ocr");
         Directory.CreateDirectory(tempRoot);
@@ -159,22 +159,22 @@ public class PaddleOcrService : IOcrService
 
             if (exitCode == 2)
                 throw new InvalidOperationException(
-                    "PaddleOCR kurulu değil. Kurulum:\n  pip install paddleocr paddlepaddle");
+                    "PaddleOCR is not installed. Install it with:\n  pip install paddleocr paddlepaddle");
 
             if (exitCode != 0)
             {
-                _logger.LogError("PaddleOCR (image) script hatası. ExitCode={Code} STDERR={Err}", exitCode, stderr);
-                throw new InvalidOperationException($"PaddleOCR script hatası (exit {exitCode}): {stderr?.Trim()}");
+                _logger.LogError("PaddleOCR (image) script error. ExitCode={Code} STDERR={Err}", exitCode, stderr);
+                throw new InvalidOperationException($"PaddleOCR script error (exit {exitCode}): {stderr?.Trim()}");
             }
 
             var text = stdout?.Trim();
             if (string.IsNullOrWhiteSpace(text))
-                text = "[PaddleOCR] Seçili bölgede metin tespit edilemedi.";
+                text = "[PaddleOCR] No text could be detected in the selected region.";
             return text;
         }
         catch (Exception ex)
         {
-            _logger.LogError(ex, "PaddleOCR (image) hatası. Doküman: {Doc}", documentTitle);
+            _logger.LogError(ex, "PaddleOCR (image) error. Document: {Doc}", documentTitle);
             throw;
         }
         finally
@@ -252,7 +252,7 @@ public class PaddleOcrService : IOcrService
             var stdout = await process.StandardOutput.ReadToEndAsync(ct);
             throw new InvalidOperationException(
                 string.Format(CultureInfo.InvariantCulture,
-                    "Komut başarısız: {0} | ExitCode={1} | STDERR={2} | STDOUT={3}",
+                    "Command failed: {0} | ExitCode={1} | STDERR={2} | STDOUT={3}",
                     fileName, process.ExitCode, stderr, stdout));
         }
     }

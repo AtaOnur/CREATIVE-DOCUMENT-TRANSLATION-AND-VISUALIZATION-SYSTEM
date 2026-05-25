@@ -36,13 +36,13 @@ public class SimpleAccountStore : ISimpleAccountStore
         email = email.Trim();
         if (string.IsNullOrWhiteSpace(email))
         {
-            errorMessage = "E-posta adresi gerekli.";
+            errorMessage = "Email address is required.";
             return false;
         }
 
         if (_accountsByEmail.ContainsKey(email))
         {
-            errorMessage = "Bu e-posta ile zaten kayıt var.";
+            errorMessage = "An account already exists with this email address.";
             return false;
         }
 
@@ -73,26 +73,26 @@ public class SimpleAccountStore : ISimpleAccountStore
         errorMessage = null;
         if (string.IsNullOrWhiteSpace(token))
         {
-            errorMessage = "Geçersiz sıfırlama bağlantısı.";
+            errorMessage = "Invalid reset link.";
             return false;
         }
 
         if (!_resetTokens.TryGetValue(token, out var entry))
         {
-            errorMessage = "Bağlantı geçersiz veya süresi dolmuş.";
+            errorMessage = "The link is invalid or has expired.";
             return false;
         }
 
         if (entry.ExpiresUtc < DateTime.UtcNow)
         {
             _resetTokens.TryRemove(token, out _);
-            errorMessage = "Bağlantı süresi dolmuş. Yeni istek gönderin.";
+            errorMessage = "The link has expired. Please send a new request.";
             return false;
         }
 
         if (!_accountsByEmail.TryGetValue(entry.Email, out var oldRecord))
         {
-            errorMessage = "Kullanıcı bulunamadı.";
+            errorMessage = "User not found.";
             return false;
         }
 
@@ -119,26 +119,26 @@ public class SimpleAccountStore : ISimpleAccountStore
         errorMessage = null;
         if (string.IsNullOrWhiteSpace(token))
         {
-            errorMessage = "Geçersiz doğrulama bağlantısı.";
+            errorMessage = "Invalid verification link.";
             return false;
         }
 
         if (!_emailVerifyTokens.TryGetValue(token, out var entry))
         {
-            errorMessage = "Bağlantı geçersiz veya süresi dolmuş.";
+            errorMessage = "The link is invalid or has expired.";
             return false;
         }
 
         if (entry.ExpiresUtc < DateTime.UtcNow)
         {
             _emailVerifyTokens.TryRemove(token, out _);
-            errorMessage = "Doğrulama bağlantısının süresi dolmuş.";
+            errorMessage = "The verification link has expired.";
             return false;
         }
 
         if (!_accountsByEmail.TryGetValue(entry.Email, out var oldRecord))
         {
-            errorMessage = "Kullanıcı bulunamadı.";
+            errorMessage = "User not found.";
             return false;
         }
 
@@ -203,7 +203,7 @@ public class SimpleAccountStore : ISimpleAccountStore
         email = email.Trim();
         if (!_accountsByEmail.TryGetValue(email, out var oldRecord))
         {
-            errorMessage = "Kullanıcı bulunamadı.";
+            errorMessage = "User not found.";
             return false;
         }
 
@@ -217,7 +217,7 @@ public class SimpleAccountStore : ISimpleAccountStore
         email = email.Trim();
         if (!_accountsByEmail.TryRemove(email, out _))
         {
-            errorMessage = "Kullanıcı bulunamadı.";
+            errorMessage = "User not found.";
             return false;
         }
 

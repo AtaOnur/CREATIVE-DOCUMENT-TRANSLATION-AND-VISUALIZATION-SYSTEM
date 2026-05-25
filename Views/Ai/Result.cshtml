@@ -1,6 +1,6 @@
 @model pdf_bitirme.Models.ViewModels.AiResultPageViewModel
 @{
-    ViewData["Title"] = "AI Sonucu";
+    ViewData["Title"] = "AI Result";
 }
 
 @*
@@ -13,33 +13,34 @@
     - Akademik citation mode ve kalite puanı etiketleri eklenebilir.
     - AI sohbet kartı: tarayıcı localStorage (pdf-workspace ile aynı anahtar); ai-result-chat-history.mjs.
     - Visualize çıktısı için overlay export seçenekleri eklenebilir.
+    - TTS sonucu varsa detay sayfasında HTML5 audio player ile oynatılır.
     - Genel image-to-text işlemi bu modülün kapsamında değildir.
 *@
 
 <div class="container py-4">
     <div class="d-flex justify-content-between align-items-center mb-3">
-        <h1 class="h4 fw-bold mb-0">AI Sonuc Detayi</h1>
-        <a class="btn btn-outline-secondary btn-sm" asp-controller="Documents" asp-action="Details" asp-route-id="@Model.DocumentId">Belgeye Don</a>
+        <h1 class="h4 fw-bold mb-0">AI Result Details</h1>
+        <a class="btn btn-outline-secondary btn-sm" asp-controller="Documents" asp-action="Details" asp-route-id="@Model.DocumentId">Back to Document</a>
     </div>
 
     <div class="card border-0 shadow-sm">
         <div class="card-body">
             <div class="row g-3 small">
-                <div class="col-md-4"><strong>Islem:</strong> @Model.OperationType</div>
+                <div class="col-md-4"><strong>Operation:</strong> @Model.OperationType</div>
                 <div class="col-md-4"><strong>Model:</strong> @Model.ModelName</div>
-                <div class="col-md-4"><strong>Stil:</strong> @Model.Style</div>
-                <div class="col-md-6"><strong>Kaynak Dil:</strong> @Model.SourceLanguage</div>
-                <div class="col-md-6"><strong>Hedef Dil:</strong> @Model.TargetLanguage</div>
-                <div class="col-md-6"><strong>Kaynak Sayfa:</strong> @Model.SourcePageNumber</div>
-                <div class="col-12"><strong>Yonerge:</strong> @(string.IsNullOrWhiteSpace(Model.CustomInstruction) ? "-" : Model.CustomInstruction)</div>
+                <div class="col-md-4"><strong>Style:</strong> @Model.Style</div>
+                <div class="col-md-6"><strong>Source Language:</strong> @Model.SourceLanguage</div>
+                <div class="col-md-6"><strong>Target Language:</strong> @Model.TargetLanguage</div>
+                <div class="col-md-6"><strong>Source Page:</strong> @Model.SourcePageNumber</div>
+                <div class="col-12"><strong>Instruction:</strong> @(string.IsNullOrWhiteSpace(Model.CustomInstruction) ? "-" : Model.CustomInstruction)</div>
             </div>
 
             <hr />
 
-            <h2 class="h6 fw-bold">Girdi Metni</h2>
+            <h2 class="h6 fw-bold">Input Text</h2>
             <div class="border rounded p-2 bg-light-subtle small mb-3" style="white-space: pre-wrap;">@Model.InputText</div>
 
-            <h2 class="h6 fw-bold">Cikti</h2>
+            <h2 class="h6 fw-bold">Output</h2>
             @if (!string.IsNullOrWhiteSpace(Model.OutputText))
             {
                 <div class="border rounded p-2 bg-light-subtle small mb-3" style="white-space: pre-wrap;">@Model.OutputText</div>
@@ -50,21 +51,31 @@
                     <img src="@Model.OutputImageUrl" alt="Visualize output" class="img-fluid rounded border" />
                 </div>
             }
+            @if (!string.IsNullOrWhiteSpace(Model.OutputAudioUrl))
+            {
+                <div class="mb-3">
+                    <h3 class="h6 fw-bold">Audio Recording</h3>
+                    <audio controls class="w-100">
+                        <source src="@Model.OutputAudioUrl" type="@Model.OutputAudioContentType" />
+                        Your browser does not support the audio player.
+                    </audio>
+                </div>
+            }
 
             <div class="d-flex flex-wrap gap-2">
                 <form asp-action="Save" method="post" data-loading-form="true">
                     @Html.AntiForgeryToken()
                     <input type="hidden" name="id" value="@Model.AiResultId" />
-                    <button type="submit" class="btn btn-success btn-sm" @(Model.IsSaved ? "disabled" : "")>Kaydet</button>
+                    <button type="submit" class="btn btn-success btn-sm" @(Model.IsSaved ? "disabled" : "")>Save</button>
                 </form>
 
                 <form asp-action="Regenerate" method="post" data-loading-form="true">
                     @Html.AntiForgeryToken()
                     <input type="hidden" name="id" value="@Model.AiResultId" />
-                    <button type="submit" class="btn btn-outline-primary btn-sm">Yeniden Uret</button>
+                    <button type="submit" class="btn btn-outline-primary btn-sm">Regenerate</button>
                 </form>
 
-                <a class="btn btn-outline-secondary btn-sm" asp-controller="Documents" asp-action="Details" asp-route-id="@Model.DocumentId">Belgeye Don</a>
+                <a class="btn btn-outline-secondary btn-sm" asp-controller="Documents" asp-action="Details" asp-route-id="@Model.DocumentId">Back to Document</a>
             </div>
         </div>
     </div>
@@ -72,12 +83,12 @@
     @* [TR] Workspace AI sohbeti (localStorage, belge başına) — pdf-workspace ile aynı anahtar; salt okunur. *@
     <div class="card border-0 shadow-sm mt-4" id="ai-result-chat-mount" data-document-id="@Model.DocumentId">
         <div class="card-body">
-            <h2 class="h6 fw-bold mb-1">AI Sohbet Gecmisi</h2>
+            <h2 class="h6 fw-bold mb-1">AI Chat History</h2>
             <p class="small text-muted mb-3 mb-md-2">
-                Bu belge için workspace’te tutulan sohbet (bu tarayıcıda saklanır). Detay sayfasında salt okunur özetlenir.
+                Chat history kept for this document in the workspace. It is shown here as a read-only summary.
             </p>
-            <div id="ai-result-chat-window" class="ai-chat-window ai-chat-window--result-page border rounded d-none" aria-label="Sohbet geçmişi"></div>
-            <p id="ai-result-chat-empty" class="small text-muted mb-0" role="status">Sohbet gecmisi kontrol ediliyor…</p>
+            <div id="ai-result-chat-window" class="ai-chat-window ai-chat-window--result-page border rounded d-none" aria-label="Chat history"></div>
+            <p id="ai-result-chat-empty" class="small text-muted mb-0" role="status">Checking chat history...</p>
         </div>
     </div>
 </div>

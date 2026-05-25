@@ -77,21 +77,21 @@ public class MockAiService : IAiService
                     var hasImage = !string.IsNullOrWhiteSpace(request.InputImageBase64);
                     result.OutputText =
                         "[Mock Explanation]\n\n" +
-                        $"İçerik tipi: {(hasImage ? "Görsel + Metin" : "Yalnız Metin")}\n" +
-                        $"Belge: {documentTitle}\n" +
-                        $"Kullanıcı yönergesi: {(string.IsNullOrWhiteSpace(instruction) ? "(yok)" : instruction)}\n\n" +
-                        "Detaylı analiz (mock):\n" +
-                        "- Sağlanan içerik tanımlanır ve türü belirlenir.\n" +
-                        "- Sayısal veri varsa kategorize edilir; metinse anahtar kişi/yer/tarih çıkarılır.\n" +
-                        "- Görsel varsa ana özne, arka plan ve dikkat çeken öğeler tarif edilir.\n\n" +
-                        $"Örnek girdi: {(string.IsNullOrWhiteSpace(text) ? "(metin yok)" : text)}";
+                        $"Content type: {(hasImage ? "Image + Text" : "Text Only")}\n" +
+                        $"Document: {documentTitle}\n" +
+                        $"User instruction: {(string.IsNullOrWhiteSpace(instruction) ? "(none)" : instruction)}\n\n" +
+                        "Detailed analysis (mock):\n" +
+                        "- The provided content is identified and its type is determined.\n" +
+                        "- Numeric data is categorized; text is scanned for key people/places/dates.\n" +
+                        "- If an image is present, the main subject, background, and notable elements are described.\n\n" +
+                        $"Sample input: {(string.IsNullOrWhiteSpace(text) ? "(no text)" : text)}";
                 }
                 break;
 
             case "Math":
                 result.OutputText =
                     "[Mock Math / Grafik]\n\n" +
-                    "Gerçek kullanımda Gemini görsel model grafik PNG üretir veya Wolfram Alpha çözüm/grafik döndürür.";
+                    "In real usage, the Gemini image model generates a chart PNG or Wolfram Alpha returns a solution/chart.";
                 result.OutputImageUrl =
                     "https://dummyimage.com/960x540/1e40af/ffffff&text=Mock+Math+Chart";
                 break;

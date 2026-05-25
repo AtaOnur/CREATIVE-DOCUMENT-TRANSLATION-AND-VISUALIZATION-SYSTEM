@@ -16,16 +16,16 @@ public class ResetPasswordViewModel
     [Required]
     public string Token { get; set; } = string.Empty;
 
-    [Required(ErrorMessage = "Yeni parola gerekli.")]
-    [StringLength(128, MinimumLength = 8, ErrorMessage = "Parola en az {2} karakter olmalı.")]
+    [Required(ErrorMessage = "New password is required.")]
+    [StringLength(128, MinimumLength = 8, ErrorMessage = "Password must be at least {2} characters.")]
     [StrongPassword]
     [DataType(DataType.Password)]
-    [Display(Name = "Yeni parola")]
+    [Display(Name = "New password")]
     public string NewPassword { get; set; } = string.Empty;
 
-    [Required(ErrorMessage = "Parola tekrarı gerekli.")]
+    [Required(ErrorMessage = "Password confirmation is required.")]
     [DataType(DataType.Password)]
-    [Compare(nameof(NewPassword), ErrorMessage = "Parolalar eşleşmiyor.")]
-    [Display(Name = "Yeni parola (tekrar)")]
+    [Compare(nameof(NewPassword), ErrorMessage = "Passwords do not match.")]
+    [Display(Name = "Confirm new password")]
     public string ConfirmPassword { get; set; } = string.Empty;
 }

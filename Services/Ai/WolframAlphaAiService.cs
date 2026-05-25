@@ -63,15 +63,15 @@ public class WolframAlphaAiService : IAiService
             return new AiServiceResult
             {
                 OutputText =
-                    "[Wolfram Alpha yalnızca Math işlemi ile kullanılır. İşlem listesinden Math seçin.]"
+                    "[Wolfram Alpha is only used with the Math operation. Select Math from the operation list.]"
             };
         }
 
         if (string.IsNullOrWhiteSpace(_opts.AppId))
         {
             throw new InvalidOperationException(
-                "Wolfram Alpha App ID yapılandırılmadı. appsettings.json → Ai:WolframAlpha:AppId " +
-                "alanına anahtarınızı yazın (https://developer.wolframalpha.com/access/).");
+                "Wolfram Alpha App ID is not configured. Add your key to Ai:WolframAlpha:AppId " +
+                "in appsettings.json (https://developer.wolframalpha.com/access/).");
         }
 
         var instr = request.CustomInstruction?.Trim() ?? "";
@@ -86,7 +86,7 @@ public class WolframAlphaAiService : IAiService
                 var svgUrl = await SaveStudentAverageHistogramSvgAsync(documentTitle, parsedTable, cancellationToken)
                     .ConfigureAwait(false);
                 _logger.LogInformation(
-                    "Öğrenci ortalama histogramı yerelde SVG olarak kaydedildi (öğrenci sayısı={N}).",
+                    "Student average histogram was saved locally as SVG (student count={N}).",
                     parsedTable.Count);
                 return new AiServiceResult
                 {
@@ -101,7 +101,7 @@ public class WolframAlphaAiService : IAiService
             {
                 var intent = ClassifyGridIntent(instr);
                 _logger.LogInformation(
-                    "Not tablosu yerelde hesaplandı (satır={Rows}, sütun={Cols}, niyet={Intent}).",
+                    "Grade table was calculated locally (rows={Rows}, columns={Cols}, intent={Intent}).",
                     parsedTable.Count,
                     parsedTable[0].Values.Count,
                     intent);
@@ -117,8 +117,8 @@ public class WolframAlphaAiService : IAiService
         if (string.IsNullOrWhiteSpace(query))
         {
             throw new InvalidOperationException(
-                "Wolfram için boş sorgu. Denklem veya grafik isteğini OCR metnine yazın veya " +
-                "\"Özel Yönerge\" alanına örn. plot sin(x) from -10 to 10 girin.");
+                "Empty query for Wolfram. Write an equation or chart request in the OCR text, or " +
+                "enter an example such as plot sin(x) from -10 to 10 in the Custom Instruction field.");
         }
 
         var url =
@@ -126,7 +126,7 @@ public class WolframAlphaAiService : IAiService
             $"&appid={Uri.EscapeDataString(_opts.AppId.Trim())}&format=plaintext,image";
 
         _logger.LogInformation(
-            "Wolfram Alpha sorgusu (Belge: {Doc}), uzunluk={Len}",
+            "Wolfram Alpha query (Document: {Doc}), length={Len}",
             documentTitle,
             query.Length);
 
@@ -139,7 +139,7 @@ public class WolframAlphaAiService : IAiService
                 "Wolfram Alpha HTTP {Status}: {Snippet}",
                 (int)resp.StatusCode,
                 xml.Length > 400 ? xml[..400] + "…" : xml);
-            throw new InvalidOperationException($"Wolfram Alpha HTTP hatası ({(int)resp.StatusCode}).");
+            throw new InvalidOperationException($"Wolfram Alpha HTTP error ({(int)resp.StatusCode}).");
         }
 
         XDocument doc;
@@ -149,13 +149,13 @@ public class WolframAlphaAiService : IAiService
         }
         catch (Exception ex)
         {
-            _logger.LogError(ex, "Wolfram XML ayrıştırılamadı.");
-            throw new InvalidOperationException("Wolfram Alpha yanıtı okunamadı.", ex);
+            _logger.LogError(ex, "Wolfram XML could not be parsed.");
+            throw new InvalidOperationException("Wolfram Alpha response could not be read.", ex);
         }
 
         var root = doc.Root;
         if (root == null)
-            throw new InvalidOperationException("Wolfram Alpha boş yanıt döndürdü.");
+            throw new InvalidOperationException("Wolfram Alpha returned an empty response.");
 
         var ok = string.Equals(root.Attribute("success")?.Value, "true", StringComparison.OrdinalIgnoreCase);
         if (!ok)
@@ -172,12 +172,12 @@ public class WolframAlphaAiService : IAiService
 
             string msg;
             if (hints.Count > 0)
-                msg = $"Öneriler: {string.Join("; ", hints)}";
+                msg = $"Suggestions: {string.Join("; ", hints)}";
             else if (!trivialErr)
                 msg = rawErr!;
             else
-                msg = "Sorgu başarısız (Wolfram sonuç üretemedi). Karmaşık tablo kullanıyorsanız Ai:WolframAlpha:UseGeminiQueryPlanner " +
-                      "açık olsun ve Gemini API anahtarının dolu olduğundan emin olun.";
+                msg = "Query failed (Wolfram could not produce a result). If you are using a complex table, make sure " +
+                      "Ai:WolframAlpha:UseGeminiQueryPlanner is enabled and the Gemini API key is set.";
 
             throw new InvalidOperationException($"Wolfram Alpha: {msg}");
         }
@@ -209,7 +209,7 @@ public class WolframAlphaAiService : IAiService
                     }
                     catch (Exception ex)
                     {
-                        _logger.LogWarning(ex, "Wolfram grafik görseli indirilemedi.");
+                        _logger.LogWarning(ex, "Wolfram chart image could not be downloaded.");
                     }
                 }
             }
@@ -219,8 +219,8 @@ public class WolframAlphaAiService : IAiService
         var outputText = distinctTexts.Count > 0
             ? string.Join("\n\n", distinctTexts)
             : outputImageUrl != null
-                ? "Wolfram Alpha grafik görseli üretildi."
-                : "Wolfram Alpha yanıt verdi ancak metin çıktısı yok.";
+                ? "Wolfram Alpha chart image was generated."
+                : "Wolfram Alpha responded, but there is no text output.";
 
         return new AiServiceResult
         {
@@ -247,14 +247,14 @@ public class WolframAlphaAiService : IAiService
                 if (!string.IsNullOrWhiteSpace(planned))
                 {
                     _logger.LogInformation(
-                        "Wolfram sorgusu Gemini planlayıcı ile üretildi (uzunluk={Len}).",
+                        "Wolfram query generated with Gemini planner (length={Len}).",
                         planned.Length);
                     return planned;
                 }
             }
             catch (Exception ex)
             {
-                _logger.LogWarning(ex, "Gemini Wolfram planlayıcı başarısız; yerel düzenleyici kullanılacak.");
+                _logger.LogWarning(ex, "Gemini Wolfram planner failed; local formatter will be used.");
             }
         }
 
@@ -402,9 +402,9 @@ OUTPUT (single line):
 
         return listBlock +
                "\n\n---\n" +
-               $"Öğrenci ortalamaları özeti — n={avgs.Count}, min={avgs.Min().ToString("F2", inv)}, max={avgs.Max().ToString("F2", inv)}, " +
-               $"ortalama={mu.ToString("F2", inv)}, örneklem s.sapması={sd.ToString("F2", inv)}\n" +
-               "Grafik: mavi çubuklar = histogram; mor çizgi = aynı ortalama/sapma ile teorik normal yoğunluk (referans).";
+               $"Student averages summary - n={avgs.Count}, min={avgs.Min().ToString("F2", inv)}, max={avgs.Max().ToString("F2", inv)}, " +
+               $"mean={mu.ToString("F2", inv)}, sample std. dev.={sd.ToString("F2", inv)}\n" +
+               "Chart: blue bars = histogram; purple line = theoretical normal density with the same mean/std. dev. (reference).";
     }
 
     private static double SampleStdDev(IReadOnlyList<double> xs)
@@ -438,7 +438,7 @@ OUTPUT (single line):
         var path = Path.Combine(dir, fileName);
         await File.WriteAllTextAsync(path, svg, Encoding.UTF8, ct).ConfigureAwait(false);
 
-        _logger.LogInformation("Histogram SVG yazıldı: {Path}", path);
+        _logger.LogInformation("Histogram SVG written: {Path}", path);
         return $"/ai-images/{fileName}";
     }
 
@@ -497,8 +497,8 @@ OUTPUT (single line):
         sb.Append("<rect width=\"100%\" height=\"100%\" fill=\"#f8fafc\"/>\n");
 
         var title = string.IsNullOrWhiteSpace(documentTitle)
-            ? "Öğrenci ortalamaları dağılımı"
-            : $"Öğrenci ortalamaları — {documentTitle}";
+            ? "Student averages distribution"
+            : $"Student averages - {documentTitle}";
         sb.Append($"<text class=\"t\" x=\"{W / 2}\" y=\"34\" text-anchor=\"middle\" font-size=\"17\" font-weight=\"600\">{SvgEscape(title)}</text>\n");
 
         sb.Append($"<rect x=\"{marginL}\" y=\"{marginT}\" width=\"{plotW}\" height=\"{plotH}\" fill=\"#ffffff\" stroke=\"#cbd5e1\" stroke-width=\"1\"/>\n");
@@ -542,8 +542,8 @@ OUTPUT (single line):
             sb.Append($"<polyline fill=\"none\" stroke=\"#7c3aed\" stroke-width=\"2.25\" opacity=\"0.88\" points=\"{string.Join(" ", curvePts)}\"/>\n");
         }
 
-        sb.Append($"<text class=\"t\" x=\"{marginL + plotW / 2}\" y=\"{H - 52}\" text-anchor=\"middle\" font-size=\"13\">Öğrenci ortalaması (not)</text>\n");
-        sb.Append($"<text class=\"t\" x=\"22\" y=\"{marginT + plotH / 2}\" text-anchor=\"middle\" font-size=\"12\" transform=\"rotate(-90 22 {marginT + plotH / 2})\">Öğrenci sayısı (yükseklik)</text>\n");
+        sb.Append($"<text class=\"t\" x=\"{marginL + plotW / 2}\" y=\"{H - 52}\" text-anchor=\"middle\" font-size=\"13\">Student average (grade)</text>\n");
+        sb.Append($"<text class=\"t\" x=\"22\" y=\"{marginT + plotH / 2}\" text-anchor=\"middle\" font-size=\"12\" transform=\"rotate(-90 22 {marginT + plotH / 2})\">Student count (height)</text>\n");
 
         sb.Append($"<text class=\"t\" x=\"{marginL}\" y=\"{H - 22}\" font-size=\"11\" fill=\"#64748b\">Min {min.ToString("F2", inv)} → Max {max.ToString("F2", inv)} · n={n}</text>\n");
         sb.Append("</svg>");
@@ -572,24 +572,24 @@ OUTPUT (single line):
             {
                 var flat = rows.SelectMany(r => r.Values).ToList();
                 return
-                    $"Tüm sayısal notların ortalaması: {flat.Average().ToString("F4", inv)}\n" +
-                    $"(Not sayısı: {flat.Count})";
+                    $"Average of all numeric grades: {flat.Average().ToString("F4", inv)}\n" +
+                    $"(Grade count: {flat.Count})";
             }
             case WolframGridIntent.SumAllValues:
             {
                 var flat = rows.SelectMany(r => r.Values).ToList();
                 return
-                    $"Tüm sayısal notların toplamı: {flat.Sum().ToString("F4", inv)}\n" +
-                    $"(Not sayısı: {flat.Count})";
+                    $"Sum of all numeric grades: {flat.Sum().ToString("F4", inv)}\n" +
+                    $"(Grade count: {flat.Count})";
             }
             case WolframGridIntent.MeanEachRow:
-                return "Öğrenci / satır ortalamaları:\n\n" + string.Join("\n",
+                return "Student / row averages:\n\n" + string.Join("\n",
                     rows.Select((r, i) =>
-                        $"{FormatRowCaption(r, i)}: {r.Values.Average().ToString("F4", inv)} ({r.Values.Count} not)"));
+                        $"{FormatRowCaption(r, i)}: {r.Values.Average().ToString("F4", inv)} ({r.Values.Count} grades)"));
             case WolframGridIntent.SumEachRow:
-                return "Öğrenci / satır toplamları:\n\n" + string.Join("\n",
+                return "Student / row totals:\n\n" + string.Join("\n",
                     rows.Select((r, i) =>
-                        $"{FormatRowCaption(r, i)}: {r.Values.Sum().ToString("F4", inv)} ({r.Values.Count} not)"));
+                        $"{FormatRowCaption(r, i)}: {r.Values.Sum().ToString("F4", inv)} ({r.Values.Count} grades)"));
             case WolframGridIntent.MeanEachColumn:
             {
                 var n = rows[0].Values.Count;
@@ -597,10 +597,10 @@ OUTPUT (single line):
                 for (var c = 0; c < n; c++)
                 {
                     var col = rows.Select(r => r.Values[c]).ToList();
-                    lines.Add($"Sütun {c + 1}: {col.Average().ToString("F4", inv)} ({col.Count} satır)");
+                    lines.Add($"Column {c + 1}: {col.Average().ToString("F4", inv)} ({col.Count} rows)");
                 }
 
-                return "Sütun bazında ortalamalar:\n\n" + string.Join("\n", lines);
+                return "Column averages:\n\n" + string.Join("\n", lines);
             }
             case WolframGridIntent.SumEachColumn:
             {
@@ -609,17 +609,17 @@ OUTPUT (single line):
                 for (var c = 0; c < n; c++)
                 {
                     var col = rows.Select(r => r.Values[c]).ToList();
-                    lines.Add($"Sütun {c + 1}: {col.Sum().ToString("F4", inv)}");
+                    lines.Add($"Column {c + 1}: {col.Sum().ToString("F4", inv)}");
                 }
 
-                return "Sütun bazında toplamlar:\n\n" + string.Join("\n", lines);
+                return "Column totals:\n\n" + string.Join("\n", lines);
             }
             default:
             {
                 var flat = rows.SelectMany(r => r.Values).ToList();
                 return
-                    $"Tüm sayısal notların ortalaması: {flat.Average().ToString("F4", inv)}\n" +
-                    $"(Not sayısı: {flat.Count})";
+                    $"Average of all numeric grades: {flat.Average().ToString("F4", inv)}\n" +
+                    $"(Grade count: {flat.Count})";
             }
         }
     }
@@ -627,7 +627,7 @@ OUTPUT (single line):
     private static string FormatRowCaption(GradeTableRow row, int index)
     {
         if (string.IsNullOrWhiteSpace(row.Label))
-            return $"Satır {index + 1}";
+            return $"Row {index + 1}";
 
         var s = row.Label.Trim();
         const int maxLen = 140;
@@ -905,7 +905,7 @@ OUTPUT (single line):
         var path = Path.Combine(dir, fileName);
         await File.WriteAllBytesAsync(path, bytes, ct).ConfigureAwait(false);
 
-        _logger.LogInformation("Wolfram görseli kaydedildi: {Path}", path);
+        _logger.LogInformation("Wolfram image saved: {Path}", path);
         return $"/ai-images/{fileName}";
     }
 }

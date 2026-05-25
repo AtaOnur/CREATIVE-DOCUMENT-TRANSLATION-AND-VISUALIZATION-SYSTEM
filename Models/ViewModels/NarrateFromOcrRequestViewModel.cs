@@ -7,13 +7,16 @@ namespace pdf_bitirme.Models.ViewModels;
  *
  * MODIFICATION NOTES (TR)
  * - İleride VoiceId seçimi kullanıcıya bırakılırsa ek alan (opsiyonel string) konabilir.
- * - BelgeId zorunluluğu güvenlik/audit için eklenebilir; şu an oturum + boş olmayan metin yeterlidir.
+ * - DocumentId ile üretilen ses AiResult kaydı olarak notebook'a otomatik düşer.
  * - Zorluk: Kolay.
  */
 
 /// <summary>OCR alanından okunan düz metinle TTS tetiklemek için istek gövdesi.</summary>
 public class NarrateFromOcrRequestViewModel
 {
+    /// <summary>Ses kaydının bağlanacağı belge; notebook/history ilişkilendirmesi için kullanılır.</summary>
+    public Guid DocumentId { get; set; }
+
     /// <summary>
     /// OCR çıktısı veya kullanıcı düzeltmesi; sunucuda normalize edilerek Gemini TTS’ye iletilir.
     /// </summary>

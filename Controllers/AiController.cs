@@ -64,7 +64,7 @@ public class AiController : Controller
     public IActionResult ModelsForTask([FromQuery] string task)
     {
         if (string.IsNullOrWhiteSpace(task))
-            return BadRequest(new { ok = false, message = "Task parametresi gerekli." });
+            return BadRequest(new { ok = false, message = "Task parameter is required." });
 
         var models = _aiOptions.Models
             .Where(m => m.Tasks.Contains(task, StringComparer.OrdinalIgnoreCase))
@@ -79,10 +79,10 @@ public class AiController : Controller
     public async Task<IActionResult> Process([FromBody] AiProcessRequestViewModel request, CancellationToken cancellationToken)
     {
         if (request.DocumentId == Guid.Empty)
-            return BadRequest(new { ok = false, message = "Belge kimliği zorunlu." });
+            return BadRequest(new { ok = false, message = "Document ID is required." });
 
         if (!SupportedOps.Contains(request.OperationType ?? string.Empty))
-            return BadRequest(new { ok = false, message = "Geçersiz AI işlem tipi." });
+            return BadRequest(new { ok = false, message = "Invalid AI operation type." });
 
         // [TR] Artık üç girdiden en az biri yeterli:
         //      - InputText (OCR/serbest metin)
@@ -92,12 +92,12 @@ public class AiController : Controller
         var hasInstruction = !string.IsNullOrWhiteSpace(request.CustomInstruction);
         var hasImage = !string.IsNullOrWhiteSpace(request.InputImageBase64);
         if (!hasText && !hasInstruction && !hasImage)
-            return BadRequest(new { ok = false, message = "İşlenecek metin, görsel veya yönerge gerekli." });
+            return BadRequest(new { ok = false, message = "Text, image, or instruction is required for processing." });
 
         var email = User.Identity!.Name!;
         var workspace = await _documentService.GetWorkspaceAsync(email, request.DocumentId, cancellationToken);
         if (workspace == null)
-            return NotFound(new { ok = false, message = "Belge bulunamadı." });
+            return NotFound(new { ok = false, message = "Document not found." });
 
         AiServiceResult aiResult;
         try
@@ -108,7 +108,7 @@ public class AiController : Controller
         {
             // [TR] Gemini API hatası veya bağlantı sorunu; kullanıcıya anlamlı mesaj döner.
             var msg = ex.InnerException?.Message ?? ex.Message;
-            return BadRequest(new { ok = false, message = $"AI işlemi başarısız: {msg}" });
+            return BadRequest(new { ok = false, message = $"AI operation failed: {msg}" });
         }
 
         var save = await _documentService.SaveAiResultAsync(email, request.DocumentId, request, aiResult, cancellationToken);
@@ -118,7 +118,7 @@ public class AiController : Controller
         return Json(new
         {
             ok = true,
-            message = "AI işlemi tamamlandı.",
+            message = "AI operation completed.",
             aiResultId = save.AiResultId,
             outputText = aiResult.OutputText,
             outputImageUrl = aiResult.OutputImageUrl,
@@ -143,7 +143,7 @@ public class AiController : Controller
     {
         var email = User.Identity!.Name!;
         var result = await _documentService.MarkAiResultSavedAsync(email, id, cancellationToken);
-        TempData["AiResultMessage"] = result.Ok ? "AI sonucu kaydedildi." : (result.ErrorMessage ?? "AI sonucu kaydedilemedi.");
+        TempData["AiResultMessage"] = result.Ok ? "AI result saved." : (result.ErrorMessage ?? "AI result could not be saved.");
         return RedirectToAction(nameof(Result), new { id });
     }
 
@@ -164,11 +164,11 @@ public class AiController : Controller
         var save = await _documentService.SaveAiResultAsync(email, request.DocumentId, request, aiResult, cancellationToken);
         if (!save.Ok || save.AiResultId == null)
         {
-            TempData["AiResultMessage"] = save.ErrorMessage ?? "Yeniden üretim başarısız.";
+            TempData["AiResultMessage"] = save.ErrorMessage ?? "Regeneration failed.";
             return RedirectToAction(nameof(Result), new { id });
         }
 
-        TempData["AiResultMessage"] = "AI sonucu yeniden üretildi.";
+        TempData["AiResultMessage"] = "AI result regenerated.";
         return RedirectToAction(nameof(Result), new { id = save.AiResultId.Value });
     }
 }

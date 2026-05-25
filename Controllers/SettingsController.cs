@@ -46,7 +46,7 @@ public class SettingsController : Controller
             return View("Index", model);
 
         var result = await _documentService.UpdateSettingsAsync(email, model, cancellationToken);
-        TempData["SettingsMessage"] = result.Ok ? "Ayarlar kaydedildi." : (result.ErrorMessage ?? "Ayarlar kaydedilemedi.");
+        TempData["SettingsMessage"] = result.Ok ? "Settings saved." : (result.ErrorMessage ?? "Settings could not be saved.");
         return RedirectToAction(nameof(Index));
     }
 }

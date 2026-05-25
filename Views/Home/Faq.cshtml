@@ -12,7 +12,7 @@
     - Zorluk: Kolay.
 *@
 @{
-    ViewData["Title"] = "Sıkça Sorulan Sorular";
+    ViewData["Title"] = "Frequently Asked Questions";
 }
 
 <div class="container py-5">
@@ -20,31 +20,30 @@
         <div class="col-lg-9">
 
             <div class="text-center mb-5">
-                <h1 class="h2 fw-bold mb-2">Sıkça Sorulan Sorular</h1>
+                <h1 class="h2 fw-bold mb-2">Frequently Asked Questions</h1>
                 <p class="text-muted mb-0">
-                    CreativeDoc hakkında en çok merak edilen konuları burada topladık.
-                    Aradığını bulamazsan iletişim sayfasından bize ulaşabilirsin.
+                    Here are the most common questions about CreativeDoc.
+                    If you cannot find what you need, you can contact us by email.
                 </p>
             </div>
 
             @* [TR] ───── GENEL ───── *@
-            <h2 class="h5 fw-semibold text-uppercase text-muted mb-3 mt-4">Genel</h2>
+            <h2 class="h5 fw-semibold text-uppercase text-muted mb-3 mt-4">General</h2>
             <div class="accordion accordion-flush mb-4" id="faqGeneral">
 
                 <div class="accordion-item">
                     <h2 class="accordion-header" id="faqH1">
                         <button class="accordion-button collapsed" type="button"
                                 data-bs-toggle="collapse" data-bs-target="#faqC1">
-                            CreativeDoc nedir?
+                            What is CreativeDoc?
                         </button>
                     </h2>
                     <div id="faqC1" class="accordion-collapse collapse"
                          aria-labelledby="faqH1" data-bs-parent="#faqGeneral">
                         <div class="accordion-body text-muted">
-                            CreativeDoc, PDF belgelerinden seçtiğin bölgelerden metin çıkarıp
-                            (OCR) çeviri, özetleme, yeniden yazma, yaratıcı yazım ve görselleştirme
-                            gibi yapay zekâ işlemleri yapmanı sağlayan bir
-                            <strong>ASP.NET Core MVC</strong> bitirme projesidir.
+                            CreativeDoc is an <strong>ASP.NET Core MVC</strong> graduation project
+                            that lets you extract text from selected PDF regions and run AI operations
+                            such as translation, summarization, rewriting, creative writing, and visualization.
                         </div>
                     </div>
                 </div>
@@ -53,16 +52,16 @@
                     <h2 class="accordion-header" id="faqH2">
                         <button class="accordion-button collapsed" type="button"
                                 data-bs-toggle="collapse" data-bs-target="#faqC2">
-                            Sistemi kullanmak ücretli mi?
+                            Is the system paid?
                         </button>
                     </h2>
                     <div id="faqC2" class="accordion-collapse collapse"
                          aria-labelledby="faqH2" data-bs-parent="#faqGeneral">
                         <div class="accordion-body text-muted">
-                            Uygulamanın kendisi ücretsizdir. Ancak entegre edilmiş bazı AI sağlayıcıları
-                            (ör. Google Gemini görsel üretim modeli) kendi tarafında ücretli plan gerektirebilir.
-                            Ücretsiz kullanım için <strong>Groq Llama</strong>, <strong>HuggingFace Qwen</strong>
-                            ve <strong>FLUX.1 Schnell</strong> modellerini seçebilirsin.
+                            The application itself is free. Some integrated AI providers
+                            (for example, Google Gemini image generation models) may require a paid plan.
+                            For free usage, you can choose <strong>Groq Llama</strong>,
+                            <strong>HuggingFace Qwen</strong>, and <strong>FLUX.1 Schnell</strong> models.
                         </div>
                     </div>
                 </div>
@@ -77,15 +76,15 @@
                     <h2 class="accordion-header" id="faqH3">
                         <button class="accordion-button collapsed" type="button"
                                 data-bs-toggle="collapse" data-bs-target="#faqC3">
-                            Hangi dosya türlerini yükleyebilirim?
+                            Which file types can I upload?
                         </button>
                     </h2>
                     <div id="faqC3" class="accordion-collapse collapse"
                          aria-labelledby="faqH3" data-bs-parent="#faqOcr">
                         <div class="accordion-body text-muted">
-                            Şu anda yalnızca <strong>PDF</strong> dosyaları destekleniyor.
-                            Maksimum dosya boyutu <strong>20 MB</strong>'dır.
-                            Doğrudan görsel (JPG/PNG) yüklemesi kapsam dışındadır.
+                            Currently, only <strong>PDF</strong> files are supported.
+                            The maximum file size is <strong>20 MB</strong>.
+                            Direct image uploads (JPG/PNG) are outside the current scope.
                         </div>
                     </div>
                 </div>
@@ -94,17 +93,15 @@
                     <h2 class="accordion-header" id="faqH4">
                         <button class="accordion-button collapsed" type="button"
                                 data-bs-toggle="collapse" data-bs-target="#faqC4">
-                            OCR nasıl çalışıyor, tüm belgeyi mi tarıyor?
+                            How does OCR work? Does it scan the whole document?
                         </button>
                     </h2>
                     <div id="faqC4" class="accordion-collapse collapse"
                          aria-labelledby="faqH4" data-bs-parent="#faqOcr">
                         <div class="accordion-body text-muted">
-                            Hayır. OCR yalnızca belge detay sayfasında <strong>kullanıcının
-                            fare ile seçtiği dikdörtgen bölge</strong> üzerinde çalışır. Böylece
-                            gereksiz metin işlemesi yapılmaz ve süreç daha hızlı olur.
-                            Arka planda <strong>Tesseract</strong> motoru kullanılmaktadır
-                            (PaddleOCR opsiyonel olarak yapılandırılabilir).
+                            No. OCR only runs on the <strong>rectangular region selected by the user</strong>
+                            on the document details page. This avoids unnecessary text processing and keeps the workflow faster.
+                            <strong>Tesseract</strong> is used in the background, and PaddleOCR can be configured optionally.
                         </div>
                     </div>
                 </div>
@@ -113,15 +110,15 @@
                     <h2 class="accordion-header" id="faqH5">
                         <button class="accordion-button collapsed" type="button"
                                 data-bs-toggle="collapse" data-bs-target="#faqC5">
-                            OCR hangi dilleri destekliyor?
+                            Which languages does OCR support?
                         </button>
                     </h2>
                     <div id="faqC5" class="accordion-collapse collapse"
                          aria-labelledby="faqH5" data-bs-parent="#faqOcr">
                         <div class="accordion-body text-muted">
-                            Varsayılan olarak <strong>Türkçe</strong> ve <strong>İngilizce</strong>
-                            (<code>tur+eng</code>) dil paketleri yüklüdür; sistem dili otomatik algılar.
-                            Kullanıcı yalnızca <em>hedef çeviri dilini</em> seçer.
+                            By default, <strong>Turkish</strong> and <strong>English</strong>
+                            (<code>tur+eng</code>) language packs are available. The system detects the source language automatically.
+                            The user only selects the <em>target translation language</em>.
                         </div>
                     </div>
                 </div>
@@ -129,24 +126,24 @@
             </div>
 
             @* [TR] ───── AI MODELLERİ ───── *@
-            <h2 class="h5 fw-semibold text-uppercase text-muted mb-3 mt-4">AI Modelleri</h2>
+            <h2 class="h5 fw-semibold text-uppercase text-muted mb-3 mt-4">AI Models</h2>
             <div class="accordion accordion-flush mb-4" id="faqAi">
 
                 <div class="accordion-item">
                     <h2 class="accordion-header" id="faqH6">
                         <button class="accordion-button collapsed" type="button"
                                 data-bs-toggle="collapse" data-bs-target="#faqC6">
-                            Hangi AI sağlayıcıları entegre edilmiş?
+                            Which AI providers are integrated?
                         </button>
                     </h2>
                     <div id="faqC6" class="accordion-collapse collapse"
                          aria-labelledby="faqH6" data-bs-parent="#faqAi">
                         <div class="accordion-body text-muted">
                             <ul class="mb-0 ps-3">
-                                <li><strong>Google Gemini</strong> — metin &amp; görsel üretimi</li>
-                                <li><strong>Groq</strong> — Llama 3.x ve Qwen 3 (hızlı, ücretsiz)</li>
+                                <li><strong>Google Gemini</strong> - text and image generation</li>
+                                <li><strong>Groq</strong> - Llama 3.x and Qwen 3 (fast, free)</li>
                                 <li><strong>HuggingFace</strong> — Qwen 2.5, FLUX.1 Schnell</li>
-                                <li><strong>Stability AI</strong> — Stable Diffusion 3.5, Stable Image Core</li>
+                                <li><strong>Stability AI</strong> - Stable Diffusion 3.5, Stable Image Core</li>
                             </ul>
                         </div>
                     </div>
@@ -156,19 +153,19 @@
                     <h2 class="accordion-header" id="faqH7">
                         <button class="accordion-button collapsed" type="button"
                                 data-bs-toggle="collapse" data-bs-target="#faqC7">
-                            Hangi görevler için hangi model uygun?
+                            Which model is suitable for each task?
                         </button>
                     </h2>
                     <div id="faqC7" class="accordion-collapse collapse"
                          aria-labelledby="faqH7" data-bs-parent="#faqAi">
                         <div class="accordion-body text-muted">
                             <ul class="mb-0 ps-3">
-                                <li><strong>Çeviri / Özetleme / Yeniden Yazma / Yaratıcı Yazım</strong> →
+                                <li><strong>Translation / Summarization / Rewrite / Creative Writing</strong> →
                                     Gemini 2.5, Llama 3.3 70B, Qwen 2.5</li>
-                                <li><strong>Görsel Üretimi (Visualize)</strong> →
+                                <li><strong>Image Generation (Visualize)</strong> →
                                     Stable Diffusion 3.5, FLUX.1 Schnell, Gemini 3.1 Flash Image</li>
                             </ul>
-                            Seçtiğin göreve göre model listesi otomatik olarak filtrelenir.
+                            The model list is filtered automatically according to the selected task.
                         </div>
                     </div>
                 </div>
@@ -177,16 +174,16 @@
                     <h2 class="accordion-header" id="faqH8">
                         <button class="accordion-button collapsed" type="button"
                                 data-bs-toggle="collapse" data-bs-target="#faqC8">
-                            "API key geçersiz" hatası alıyorum, ne yapmalıyım?
+                            I get an "invalid API key" error. What should I do?
                         </button>
                     </h2>
                     <div id="faqC8" class="accordion-collapse collapse"
                          aria-labelledby="faqH8" data-bs-parent="#faqAi">
                         <div class="accordion-body text-muted">
-                            İlgili sağlayıcıdan aldığın anahtarı <code>appsettings.Development.json</code>
-                            dosyasındaki <code>Ai &gt; {Sağlayıcı} &gt; ApiKey</code> alanına yapıştır.
-                            Örneğin Gemini için <code>Ai:Gemini:ApiKey</code>. Anahtar boş ya da placeholder
-                            (<code>YOUR_*_KEY</code>) ise istekler reddedilir.
+                            Paste the key from the relevant provider into
+                            <code>Ai &gt; {Provider} &gt; ApiKey</code> in <code>appsettings.Development.json</code>.
+                            For example, use <code>Ai:Gemini:ApiKey</code> for Gemini.
+                            Requests are rejected if the key is empty or still a placeholder such as <code>YOUR_*_KEY</code>.
                         </div>
                     </div>
                 </div>
@@ -194,22 +191,21 @@
             </div>
 
             @* [TR] ───── HESAP & GİZLİLİK ───── *@
-            <h2 class="h5 fw-semibold text-uppercase text-muted mb-3 mt-4">Hesap &amp; Gizlilik</h2>
+            <h2 class="h5 fw-semibold text-uppercase text-muted mb-3 mt-4">Account &amp; Privacy</h2>
             <div class="accordion accordion-flush mb-4" id="faqAccount">
 
                 <div class="accordion-item">
                     <h2 class="accordion-header" id="faqH9">
                         <button class="accordion-button collapsed" type="button"
                                 data-bs-toggle="collapse" data-bs-target="#faqC9">
-                            Kayıt olurken e-posta doğrulama zorunlu mu?
+                            Is email verification required during registration?
                         </button>
                     </h2>
                     <div id="faqC9" class="accordion-collapse collapse"
                          aria-labelledby="faqH9" data-bs-parent="#faqAccount">
                         <div class="accordion-body text-muted">
-                            Evet. Güvenlik amacıyla kayıt sonrası e-posta adresine gönderilen
-                            doğrulama bağlantısına tıklaman gerekir. Doğrulama tamamlanmadan
-                            giriş yapılamaz.
+                            Yes. For security, you must click the verification link sent to your email address after registration.
+                            You cannot log in until verification is complete.
                         </div>
                     </div>
                 </div>
@@ -218,16 +214,16 @@
                     <h2 class="accordion-header" id="faqH10">
                         <button class="accordion-button collapsed" type="button"
                                 data-bs-toggle="collapse" data-bs-target="#faqC10">
-                            Şifremi unuttum, sıfırlayabilir miyim?
+                            I forgot my password. Can I reset it?
                         </button>
                     </h2>
                     <div id="faqC10" class="accordion-collapse collapse"
                          aria-labelledby="faqH10" data-bs-parent="#faqAccount">
                         <div class="accordion-body text-muted">
-                            Evet. Giriş ekranındaki <a asp-controller="Account" asp-action="ForgotPassword">
-                            <strong>Şifremi Unuttum</strong></a> bağlantısından e-posta adresini gir;
-                            sana özel bir sıfırlama linki gönderilir. Şifre kurallarımız: en az 8 karakter,
-                            bir büyük harf, bir rakam ve bir özel karakter.
+                            Yes. Use the <a asp-controller="Account" asp-action="ForgotPassword">
+                            <strong>Forgot Password</strong></a> link on the login screen and enter your email address.
+                            A reset link will be created for you. Password rules: at least 8 characters,
+                            one uppercase letter, one number, and one special character.
                         </div>
                     </div>
                 </div>
@@ -236,15 +232,15 @@
                     <h2 class="accordion-header" id="faqH11">
                         <button class="accordion-button collapsed" type="button"
                                 data-bs-toggle="collapse" data-bs-target="#faqC11">
-                            Belgelerim ve AI çıktılarım saklanıyor mu?
+                            Are my documents and AI outputs stored?
                         </button>
                     </h2>
                     <div id="faqC11" class="accordion-collapse collapse"
                          aria-labelledby="faqH11" data-bs-parent="#faqAccount">
                         <div class="accordion-body text-muted">
-                            Yüklediğin PDF'ler, OCR metinleri ve AI sonuçları sadece senin hesabına
-                            bağlı olarak yerel <strong>SQLite</strong> veritabanında saklanır.
-                            Not Defteri sayfasından istediğin zaman görüntüleyebilir veya silebilirsin.
+                            Uploaded PDFs, OCR text, and AI results are stored in the local
+                            <strong>SQLite</strong> database under your account.
+                            You can view or delete them from the Notebook page at any time.
                         </div>
                     </div>
                 </div>
@@ -253,16 +249,16 @@
                     <h2 class="accordion-header" id="faqH12">
                         <button class="accordion-button collapsed" type="button"
                                 data-bs-toggle="collapse" data-bs-target="#faqC12">
-                            Verilerim üçüncü taraflarla paylaşılıyor mu?
+                            Is my data shared with third parties?
                         </button>
                     </h2>
                     <div id="faqC12" class="accordion-collapse collapse"
                          aria-labelledby="faqH12" data-bs-parent="#faqAccount">
                         <div class="accordion-body text-muted">
-                            Seçtiğin AI işlemi sırasında <em>yalnızca ilgili metin</em> seçtiğin
-                            sağlayıcıya (Gemini, Groq, HuggingFace veya Stability AI) gönderilir.
-                            Daha fazla bilgi için
-                            <a asp-controller="Home" asp-action="Privacy">Gizlilik</a> sayfasına bakabilirsin.
+                            During the selected AI operation, <em>only the relevant text or selected image</em>
+                            is sent to the provider you choose (Gemini, Groq, HuggingFace, or Stability AI).
+                            For more information, see the
+                            <a asp-controller="Home" asp-action="Privacy">Privacy</a> page.
                         </div>
                     </div>
                 </div>
@@ -276,16 +272,16 @@
                     Kullanıcı başka mail istemcisi tercih ediyorsa mailto: linki
                     otomatik olarak devreye girer (noscript fallback).            *@
             <div class="text-center text-muted small mt-5">
-                <p class="mb-2">Sorunuz listede yok mu?</p>
+                <p class="mb-2">Is your question not listed?</p>
                 <a class="btn btn-accent btn-sm px-4"
-                   href="https://mail.google.com/mail/?view=cm&fs=1&to=creativedocsystem@gmail.com&su=CreativeDoc%20%E2%80%94%20%C4%B0leti%C5%9Fim&body=Merhaba%20CreativeDoc%20ekibi%2C%0D%0A%0D%0A"
+                   href="https://mail.google.com/mail/?view=cm&fs=1&to=creativedocsystem@gmail.com&su=CreativeDoc%20Contact&body=Hello%20CreativeDoc%20team%2C%0D%0A%0D%0A"
                    target="_blank"
                    rel="noopener"
-                   title="creativedocsystem@gmail.com adresine e-posta gönder">
-                    Bize yazın
+                   title="Send an email to creativedocsystem@gmail.com">
+                    Contact us
                 </a>
                 <div class="mt-2">
-                    <a href="mailto:creativedocsystem@gmail.com?subject=CreativeDoc%20%E2%80%94%20%C4%B0leti%C5%9Fim"
+                    <a href="mailto:creativedocsystem@gmail.com?subject=CreativeDoc%20Contact"
                        class="link-secondary">
                         creativedocsystem@gmail.com
                     </a>

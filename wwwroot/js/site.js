@@ -10,8 +10,23 @@
  */
 (function () {
   const loadingForms = document.querySelectorAll("form[data-loading-form='true']");
+  function isFormValid(form) {
+    if (window.jQuery && window.jQuery.fn && typeof window.jQuery(form).valid === "function") {
+      if (!window.jQuery(form).valid()) return false;
+    }
+
+    if (typeof form.checkValidity === "function" && !form.checkValidity()) {
+      if (typeof form.reportValidity === "function") form.reportValidity();
+      return false;
+    }
+
+    return true;
+  }
+
   for (const form of loadingForms) {
     form.addEventListener("submit", function () {
+      if (!isFormValid(form)) return;
+
       const submit = form.querySelector("button[type='submit']");
       if (!submit) return;
       if (submit.dataset.loadingApplied === "true") return;
@@ -20,7 +35,7 @@
       submit.dataset.loadingApplied = "true";
       submit.disabled = true;
       submit.innerHTML =
-        "<span class='spinner-border spinner-border-sm me-2' role='status' aria-hidden='true'></span>İşleniyor...";
+        "<span class='spinner-border spinner-border-sm me-2' role='status' aria-hidden='true'></span>Processing...";
     });
   }
 })();

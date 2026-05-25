@@ -10,6 +10,7 @@ namespace pdf_bitirme.Models.Entities;
  * - Çeviri kalite puanı ve akademik atıf modu alanları eklenebilir.
  * - Overlay export metadata'sı ileride tutulabilir.
  * - Notebook başlığı ve kullanıcı notu alanları eklendi.
+ * - TTS çıktıları için ses URL/MIME alanları eklendi; notebook artık ses kayıtlarını da gösterebilir.
  * - Genel image-to-text işlemi bu modülün kapsamında değildir.
  * - Zorluk: Orta.
  */
@@ -32,6 +33,8 @@ public class AiResult
     public string InputText { get; set; } = string.Empty;
     public string OutputText { get; set; } = string.Empty;
     public string OutputImageUrl { get; set; } = string.Empty;
+    public string OutputAudioUrl { get; set; } = string.Empty;
+    public string OutputAudioContentType { get; set; } = string.Empty;
     public bool IsSaved { get; set; }
 
     public DateTime CreatedAtUtc { get; set; }

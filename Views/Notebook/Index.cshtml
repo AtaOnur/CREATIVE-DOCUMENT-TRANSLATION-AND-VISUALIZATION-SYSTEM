@@ -1,6 +1,6 @@
 @model pdf_bitirme.Models.ViewModels.NotebookIndexViewModel
 @{
-    ViewData["Title"] = "Not Defteri / Gecmis";
+    ViewData["Title"] = "Notebook / History";
 }
 
 @*
@@ -11,6 +11,7 @@
     MODIFICATION NOTES (TR)
     - Klasor, etiket ve favori filtreleri sonra eklenebilir.
     - Notebook disa aktarma (PDF/Markdown) sonra eklenebilir.
+    - NLP ve TTS kayitlari ayni listede gosterilir; ses/gorsel rozetleri eklendi.
     - Isbirligi/collaboration future work.
     - Genel resim OCR destegi bu surumde yer almamaktadir.
 *@
@@ -18,8 +19,8 @@
 <div class="app-page-header py-3 border-bottom border-light-subtle mb-3">
     <div class="container d-flex flex-wrap justify-content-between align-items-center gap-2">
         <div>
-            <h1 class="h4 fw-bold text-app-primary mb-1">Not Defteri / Kaydedilen AI Calismalari</h1>
-            <p class="text-muted small mb-0">Kaydedilen AI ciktilarini arayin, filtreleyin ve yonetin.</p>
+            <h1 class="h4 fw-bold text-app-primary mb-1">Notebook / Saved AI Work</h1>
+            <p class="text-muted small mb-0">Search, filter, and manage saved AI outputs.</p>
         </div>
     </div>
 </div>
@@ -28,13 +29,13 @@
     <form method="get" class="card border-0 shadow-sm p-3 mb-3">
         <div class="row g-2 align-items-end">
             <div class="col-md-7">
-                <label class="form-label small mb-1">Ara</label>
-                <input class="form-control" name="q" value="@Model.SearchQuery" placeholder="baslik, dokuman, not, icerik..." />
+                <label class="form-label small mb-1">Search</label>
+                <input class="form-control" name="q" value="@Model.SearchQuery" placeholder="title, document, note, content..." />
             </div>
             <div class="col-md-3">
-                <label class="form-label small mb-1">Islem</label>
+                <label class="form-label small mb-1">Operation</label>
                 <select class="form-select" name="operation">
-                    <option value="">Tumu</option>
+                    <option value="">All</option>
                     @if (Model.OperationFilter == "Translate")
                     {
                         <option value="Translate" selected>Translate</option>
@@ -75,10 +76,18 @@
                     {
                         <option value="Visualize">Visualize</option>
                     }
+                    @if (Model.OperationFilter == "Narrate")
+                    {
+                        <option value="Narrate" selected>Narrate</option>
+                    }
+                    else
+                    {
+                        <option value="Narrate">Narrate</option>
+                    }
                 </select>
             </div>
             <div class="col-md-2 d-grid">
-                <button class="btn btn-accent" type="submit">Filtrele</button>
+                <button class="btn btn-accent" type="submit">Filter</button>
             </div>
         </div>
     </form>
@@ -86,8 +95,8 @@
     @if (!Model.HasAny)
     {
         <div class="card empty-state-card border-0 p-4 text-center">
-            <h2 class="h6 mb-2">Kayitli AI sonucu bulunamadi</h2>
-            <p class="text-muted small mb-0">AI sonucunu once Result sayfasindan Save ederek notebook'a ekleyin.</p>
+            <h2 class="h6 mb-2">No saved AI results found</h2>
+            <p class="text-muted small mb-0">Saved AI and narration outputs will appear here.</p>
         </div>
     }
     else
@@ -101,18 +110,28 @@
                             <div class="d-flex flex-wrap justify-content-between gap-2">
                                 <div>
                                     <h3 class="h6 mb-1">@item.Title</h3>
-                                    <div class="small text-muted">@item.SourceDocument · Sayfa @item.PageNumber · @item.OperationType · @item.Style</div>
+                                    <div class="small text-muted">@item.SourceDocument · Page @item.PageNumber · @item.OperationType · @item.Style</div>
+                                    <div class="d-flex flex-wrap gap-1 mt-1">
+                                        @if (item.HasAudio)
+                                        {
+                                            <span class="badge text-bg-info">Audio</span>
+                                        }
+                                        @if (item.HasImage)
+                                        {
+                                            <span class="badge text-bg-secondary">Image</span>
+                                        }
+                                    </div>
                                 </div>
                                 <div class="small text-muted">@item.CreatedAtUtc.ToLocalTime().ToString("g")</div>
                             </div>
                             <p class="small mt-2 mb-3">@item.PreviewContent</p>
                             <div class="d-flex flex-wrap gap-2">
-                                <a class="btn btn-outline-primary btn-sm" asp-action="Details" asp-route-id="@item.AiResultId">Goruntule</a>
-                                <a class="btn btn-outline-secondary btn-sm" asp-action="Edit" asp-route-id="@item.AiResultId">Notu Duzenle</a>
+                                <a class="btn btn-outline-primary btn-sm" asp-action="Details" asp-route-id="@item.AiResultId">View</a>
+                                <a class="btn btn-outline-secondary btn-sm" asp-action="Edit" asp-route-id="@item.AiResultId">Edit Note</a>
                                 <form asp-action="Delete" method="post" data-loading-form="true">
                                     @Html.AntiForgeryToken()
                                     <input type="hidden" name="id" value="@item.AiResultId" />
-                                    <button class="btn btn-outline-danger btn-sm" type="submit">Sil</button>
+                                    <button class="btn btn-outline-danger btn-sm" type="submit">Delete</button>
                                 </form>
                             </div>
                         </div>

@@ -43,7 +43,7 @@ public class DocumentService : IDocumentService
     public async Task<DashboardViewModel> GetDashboardAsync(string userEmail, CancellationToken cancellationToken = default)
     {
         userEmail = userEmail.Trim();
-        var q = _db.Documents.AsNoTracking().Where(d => d.OwnerEmail == userEmail);
+        var q = _db.Documents.AsNoTracking().Where(d => d.OwnerEmail == userEmail && !d.IsBanned);
         var allForStats = await q.ToListAsync(cancellationToken);
         var stats = BuildDashboardStats(allForStats);
         var recent = allForStats
@@ -122,7 +122,7 @@ public class DocumentService : IDocumentService
     {
         userEmail = userEmail.Trim();
         var d = await _db.Documents.AsNoTracking()
-            .FirstOrDefaultAsync(x => x.Id == id && x.OwnerEmail == userEmail, cancellationToken);
+            .FirstOrDefaultAsync(x => x.Id == id && x.OwnerEmail == userEmail && !x.IsBanned, cancellationToken);
         if (d == null) return null;
         return new DocumentDetailsViewModel
         {
@@ -140,7 +140,7 @@ public class DocumentService : IDocumentService
     {
         userEmail = userEmail.Trim();
         var d = await _db.Documents.AsNoTracking()
-            .FirstOrDefaultAsync(x => x.Id == id && x.OwnerEmail == userEmail, cancellationToken);
+            .FirstOrDefaultAsync(x => x.Id == id && x.OwnerEmail == userEmail && !x.IsBanned, cancellationToken);
         if (d == null) return null;
 
         var latestOcr = await _db.OcrResults.AsNoTracking()
@@ -211,7 +211,7 @@ public class DocumentService : IDocumentService
     {
         userEmail = userEmail.Trim();
         var d = await _db.Documents.AsNoTracking()
-            .FirstOrDefaultAsync(x => x.Id == id && x.OwnerEmail == userEmail, cancellationToken);
+            .FirstOrDefaultAsync(x => x.Id == id && x.OwnerEmail == userEmail && !x.IsBanned, cancellationToken);
         if (d == null) return (null, null, null);
 
         var abs = Path.Combine(_env.ContentRootPath, d.StorageRelativePath.Replace('/', Path.DirectorySeparatorChar));
@@ -228,7 +228,7 @@ public class DocumentService : IDocumentService
     {
         userEmail = userEmail.Trim();
         var d = await _db.Documents.AsNoTracking()
-            .FirstOrDefaultAsync(x => x.Id == id && x.OwnerEmail == userEmail, cancellationToken);
+            .FirstOrDefaultAsync(x => x.Id == id && x.OwnerEmail == userEmail && !x.IsBanned, cancellationToken);
         if (d == null) return null;
 
         var abs = Path.Combine(_env.ContentRootPath, d.StorageRelativePath.Replace('/', Path.DirectorySeparatorChar));
@@ -246,7 +246,7 @@ public class DocumentService : IDocumentService
         var doc = await _db.Documents.AsNoTracking()
             .FirstOrDefaultAsync(x => x.Id == documentId && x.OwnerEmail == userEmail, cancellationToken);
         if (doc == null)
-            return (false, null, null, "Belge bulunamadı.");
+            return (false, null, null, "Document not found.");
 
         var entity = new OcrResult
         {
@@ -265,7 +265,7 @@ public class DocumentService : IDocumentService
 
         _db.OcrResults.Add(entity);
         await UpdateDocumentStatusAsync(documentId, DocumentStatus.OCR_READY, cancellationToken);
-        AddActivity(userEmail, $"\"{doc.Title}\" için seçili bölgeden mock OCR metni üretildi.");
+        AddActivity(userEmail, $"Mock OCR text was generated from the selected region for \"{doc.Title}\".");
         await _db.SaveChangesAsync(cancellationToken);
         return (true, entity.Id, entity.ExtractedText, null);
     }
@@ -280,7 +280,7 @@ public class DocumentService : IDocumentService
         var entity = await _db.OcrResults
             .FirstOrDefaultAsync(x => x.Id == ocrResultId && x.UserEmail == userEmail, cancellationToken);
         if (entity == null)
-            return (false, "OCR sonucu bulunamadı.");
+            return (false, "OCR result not found.");
 
         entity.ExtractedText = text ?? string.Empty;
         entity.UpdatedAtUtc = DateTime.UtcNow;
@@ -299,7 +299,7 @@ public class DocumentService : IDocumentService
         var doc = await _db.Documents.AsNoTracking()
             .FirstOrDefaultAsync(x => x.Id == documentId && x.OwnerEmail == userEmail, cancellationToken);
         if (doc == null)
-            return (false, null, "Belge bulunamadı.");
+            return (false, null, "Document not found.");
 
         var entity = new AiResult
         {
@@ -318,16 +318,76 @@ public class DocumentService : IDocumentService
             InputText = request.InputText ?? string.Empty,
             OutputText = aiResult.OutputText ?? string.Empty,
             OutputImageUrl = aiResult.OutputImageUrl ?? string.Empty,
-            IsSaved = false,
+            OutputAudioUrl = aiResult.OutputAudioUrl ?? string.Empty,
+            OutputAudioContentType = aiResult.OutputAudioContentType ?? string.Empty,
+            // [TR] Chat odaklı yeni akışta tüm NLP/AI çıktıları notebook geçmişine otomatik düşer.
+            IsSaved = true,
             CreatedAtUtc = DateTime.UtcNow,
             UpdatedAtUtc = DateTime.UtcNow,
         };
 
         _db.AiResults.Add(entity);
         await UpdateDocumentStatusAsync(documentId, DocumentStatus.AI_READY, cancellationToken);
-        AddActivity(userEmail, $"\"{doc.Title}\" için {entity.OperationType} AI işlemi üretildi.");
+        AddActivity(userEmail, $"{entity.OperationType} AI operation was generated for \"{doc.Title}\".");
         await _db.SaveChangesAsync(cancellationToken);
         return (true, entity.Id, null);
+    }
+
+    public async Task<(bool Ok, Guid? AiResultId, string? AudioUrl, string? ErrorMessage)> SaveNarrationResultAsync(
+        string userEmail,
+        Guid documentId,
+        string inputText,
+        byte[] audioBytes,
+        string contentType,
+        CancellationToken cancellationToken = default)
+    {
+        userEmail = userEmail.Trim();
+        var doc = await _db.Documents.AsNoTracking()
+            .FirstOrDefaultAsync(x => x.Id == documentId && x.OwnerEmail == userEmail, cancellationToken);
+        if (doc == null)
+            return (false, null, null, "Document not found.");
+        if (audioBytes.Length == 0)
+            return (false, null, null, "Audio data is empty.");
+
+        var ext = AudioExtensionFromContentType(contentType);
+        var fileName = $"{Guid.NewGuid():N}{ext}";
+        var webRoot = string.IsNullOrWhiteSpace(_env.WebRootPath)
+            ? Path.Combine(_env.ContentRootPath, "wwwroot")
+            : _env.WebRootPath;
+        var dir = Path.Combine(webRoot, "ai-audio");
+        Directory.CreateDirectory(dir);
+        await File.WriteAllBytesAsync(Path.Combine(dir, fileName), audioBytes, cancellationToken);
+
+        var audioUrl = $"/ai-audio/{fileName}";
+        var entity = new AiResult
+        {
+            Id = Guid.NewGuid(),
+            DocumentId = documentId,
+            UserEmail = userEmail,
+            OperationType = "Narrate",
+            ModelName = "Gemini TTS",
+            SourceLanguage = string.Empty,
+            TargetLanguage = string.Empty,
+            Style = "Audio",
+            CustomInstruction = "OCR text was narrated.",
+            SourcePageNumber = 1,
+            NoteTitle = BuildDefaultNoteTitle("Narrate", doc.Title),
+            UserNote = string.Empty,
+            InputText = inputText ?? string.Empty,
+            OutputText = "Audio file generated.",
+            OutputImageUrl = string.Empty,
+            OutputAudioUrl = audioUrl,
+            OutputAudioContentType = contentType,
+            IsSaved = true,
+            CreatedAtUtc = DateTime.UtcNow,
+            UpdatedAtUtc = DateTime.UtcNow,
+        };
+
+        _db.AiResults.Add(entity);
+        await UpdateDocumentStatusAsync(documentId, DocumentStatus.AI_READY, cancellationToken);
+        AddActivity(userEmail, $"TTS audio recording was generated for \"{doc.Title}\".");
+        await _db.SaveChangesAsync(cancellationToken);
+        return (true, entity.Id, audioUrl, null);
     }
 
     public async Task<AiResultPageViewModel?> GetAiResultPageAsync(
@@ -355,6 +415,8 @@ public class DocumentService : IDocumentService
                 InputText = a.InputText,
                 OutputText = a.OutputText,
                 OutputImageUrl = a.OutputImageUrl,
+                OutputAudioUrl = a.OutputAudioUrl,
+                OutputAudioContentType = a.OutputAudioContentType,
                 IsSaved = a.IsSaved,
                 UpdatedAtUtc = a.UpdatedAtUtc,
             })
@@ -372,7 +434,7 @@ public class DocumentService : IDocumentService
         var entity = await _db.AiResults
             .FirstOrDefaultAsync(x => x.Id == aiResultId && x.UserEmail == userEmail, cancellationToken);
         if (entity == null)
-            return (false, "AI sonucu bulunamadı.");
+            return (false, "AI result not found.");
 
         entity.IsSaved = true;
         entity.UpdatedAtUtc = DateTime.UtcNow;
@@ -444,7 +506,9 @@ public class DocumentService : IDocumentService
             OperationType = x.a.OperationType,
             Style = x.a.Style,
             CreatedAtUtc = x.a.CreatedAtUtc,
-            PreviewContent = BuildPreviewText(x.a.OutputText, x.a.OutputImageUrl),
+            PreviewContent = BuildPreviewText(x.a.OutputText, x.a.OutputImageUrl, x.a.OutputAudioUrl),
+            HasAudio = !string.IsNullOrWhiteSpace(x.a.OutputAudioUrl),
+            HasImage = !string.IsNullOrWhiteSpace(x.a.OutputImageUrl),
         }).ToList();
 
         return new NotebookIndexViewModel
@@ -500,7 +564,7 @@ public class DocumentService : IDocumentService
         var entity = await _db.AiResults
             .FirstOrDefaultAsync(x => x.Id == model.AiResultId && x.UserEmail == userEmail && x.IsSaved, cancellationToken);
         if (entity == null)
-            return (false, "Notebook kaydı bulunamadı.");
+            return (false, "Notebook entry not found.");
 
         entity.NoteTitle = model.NoteTitle?.Trim() ?? string.Empty;
         entity.UserNote = model.UserNote?.Trim() ?? string.Empty;
@@ -518,7 +582,7 @@ public class DocumentService : IDocumentService
         var entity = await _db.AiResults
             .FirstOrDefaultAsync(x => x.Id == aiResultId && x.UserEmail == userEmail && x.IsSaved, cancellationToken);
         if (entity == null)
-            return (false, "Notebook kaydı bulunamadı.");
+            return (false, "Notebook entry not found.");
 
         _db.AiResults.Remove(entity);
         await _db.SaveChangesAsync(cancellationToken);
@@ -579,24 +643,24 @@ public class DocumentService : IDocumentService
     {
         userEmail = userEmail.Trim();
         if (file == null || file.Length == 0)
-            return (false, "Dosya seçilmedi.");
+            return (false, "No file selected.");
 
         if (file.Length > DocumentUploadConstants.MaxBytes)
-            return (false, $"Dosya en fazla {DocumentUploadConstants.MaxBytes / (1024 * 1024)} MB olabilir.");
+            return (false, $"File size can be at most {DocumentUploadConstants.MaxBytes / (1024 * 1024)} MB.");
 
         if (!IsAllowedPdfName(file.FileName))
-            return (false, "Yalnızca .pdf uzantılı dosya yükleyebilirsiniz.");
+            return (false, "Only .pdf files can be uploaded.");
 
         if (!string.IsNullOrEmpty(file.ContentType)
             && !file.ContentType.Equals(DocumentUploadConstants.AllowedContentType, StringComparison.OrdinalIgnoreCase)
             && !file.ContentType.Equals("application/x-pdf", StringComparison.OrdinalIgnoreCase))
         {
-            _logger.LogInformation("İçerik türü şüpheli ama uzantı PDF: {Type}", file.ContentType);
+            _logger.LogInformation("Content type is suspicious, but extension is PDF: {Type}", file.ContentType);
         }
 
         await using var probe = file.OpenReadStream();
         if (!await HasPdfMagicHeaderAsync(probe, cancellationToken))
-            return (false, "Dosya geçerli bir PDF gibi görünmüyor (başlık kontrolü).");
+            return (false, "The file does not appear to be a valid PDF (header check).");
 
         var id = Guid.NewGuid();
         var folder = HashFolder(userEmail);
@@ -629,7 +693,7 @@ public class DocumentService : IDocumentService
         };
 
         _db.Documents.Add(doc);
-        AddActivity(userEmail, $"\"{displayTitle}\" PDF olarak yüklendi.");
+        AddActivity(userEmail, $"\"{displayTitle}\" was uploaded as a PDF.");
         await _db.SaveChangesAsync(cancellationToken);
 
         // [TR] Mock iş akışı: gerçek OCR kuyruğu yok; durumu “işleniyor”a çekip hemen OCR hazır göstermek demo için yorumda bırakıldı.
@@ -641,7 +705,7 @@ public class DocumentService : IDocumentService
         userEmail = userEmail.Trim();
         var doc = await _db.Documents.FirstOrDefaultAsync(d => d.Id == id && d.OwnerEmail == userEmail, cancellationToken);
         if (doc == null)
-            return (false, "Belge bulunamadı.");
+            return (false, "Document not found.");
 
         var abs = Path.Combine(_env.ContentRootPath, doc.StorageRelativePath.Replace('/', Path.DirectorySeparatorChar));
         try
@@ -657,10 +721,12 @@ public class DocumentService : IDocumentService
         var title = doc.Title;
         var ocrRows = await _db.OcrResults.Where(x => x.DocumentId == id && x.UserEmail == userEmail).ToListAsync(cancellationToken);
         var aiRows = await _db.AiResults.Where(x => x.DocumentId == id && x.UserEmail == userEmail).ToListAsync(cancellationToken);
+        var chatRows = await _db.ChatMessages.Where(x => x.DocumentId == id && x.UserEmail == userEmail).ToListAsync(cancellationToken);
         if (ocrRows.Count > 0) _db.OcrResults.RemoveRange(ocrRows);
         if (aiRows.Count > 0) _db.AiResults.RemoveRange(aiRows);
+        if (chatRows.Count > 0) _db.ChatMessages.RemoveRange(chatRows);
         _db.Documents.Remove(doc);
-        AddActivity(userEmail, $"\"{title}\" silindi.");
+        AddActivity(userEmail, $"\"{title}\" was deleted.");
         await _db.SaveChangesAsync(cancellationToken);
         return (true, null);
     }
@@ -726,13 +792,24 @@ public class DocumentService : IDocumentService
         return $"{op} - {documentTitle}";
     }
 
-    private static string BuildPreviewText(string outputText, string outputImageUrl)
+    private static string BuildPreviewText(string outputText, string outputImageUrl, string outputAudioUrl)
     {
         if (!string.IsNullOrWhiteSpace(outputText))
             return outputText.Length <= 160 ? outputText : $"{outputText[..160]}...";
         if (!string.IsNullOrWhiteSpace(outputImageUrl))
-            return "Gorsel uretim sonucu mevcut.";
+            return "Image generation result is available.";
+        if (!string.IsNullOrWhiteSpace(outputAudioUrl))
+            return "Narration recording is available.";
         return "-";
+    }
+
+    private static string AudioExtensionFromContentType(string contentType)
+    {
+        var ct = contentType?.ToLowerInvariant() ?? "";
+        if (ct.Contains("mpeg") || ct.Contains("mp3")) return ".mp3";
+        if (ct.Contains("ogg")) return ".ogg";
+        if (ct.Contains("webm")) return ".webm";
+        return ".wav";
     }
 
     /// <summary>

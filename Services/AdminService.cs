@@ -1,4 +1,5 @@
 using Microsoft.EntityFrameworkCore;
+using Microsoft.AspNetCore.Hosting;
 using pdf_bitirme.Data;
 using pdf_bitirme.Models;
 using pdf_bitirme.Models.Entities;
@@ -24,12 +25,14 @@ public class AdminService : IAdminService
     private readonly AppDbContext _db;
     private readonly ISimpleAccountStore _accounts;
     private readonly IDocumentService _documentService;
+    private readonly IWebHostEnvironment _env;
 
-    public AdminService(AppDbContext db, ISimpleAccountStore accounts, IDocumentService documentService)
+    public AdminService(AppDbContext db, ISimpleAccountStore accounts, IDocumentService documentService, IWebHostEnvironment env)
     {
         _db = db;
         _accounts = accounts;
         _documentService = documentService;
+        _env = env;
     }
 
     public async Task<AdminDashboardViewModel> GetDashboardAsync(CancellationToken cancellationToken = default)
@@ -137,14 +140,14 @@ public class AdminService : IAdminService
         targetEmail = targetEmail.Trim();
         actorEmail = actorEmail.Trim();
         if (string.IsNullOrWhiteSpace(targetEmail))
-            return (false, "Kullanici e-postasi bos olamaz.");
+            return (false, "User email cannot be empty.");
 
         if (string.Equals(targetEmail, actorEmail, StringComparison.OrdinalIgnoreCase))
-            return (false, "Admin kendi hesabini silemez.");
+            return (false, "Admins cannot delete their own account.");
 
         var account = _accounts.GetUser(targetEmail);
         if (account == null)
-            return (false, "Kullanici bulunamadi.");
+            return (false, "User not found.");
 
         // [TR] Önce kullanıcının dosyalarını servis üzerinden silip disk+DB tutarlılığını koruyoruz.
         var userDocs = await _db.Documents.AsNoTracking()
@@ -157,6 +160,9 @@ public class AdminService : IAdminService
             await _documentService.DeleteAsync(targetEmail, docId, cancellationToken);
         }
 
+        var userChats = await _db.ChatMessages.Where(x => x.UserEmail == targetEmail).ToListAsync(cancellationToken);
+        if (userChats.Count > 0) _db.ChatMessages.RemoveRange(userChats);
+
         var userActivities = await _db.ActivityEntries.Where(x => x.UserEmail == targetEmail).ToListAsync(cancellationToken);
         if (userActivities.Count > 0) _db.ActivityEntries.RemoveRange(userActivities);
 
@@ -164,13 +170,13 @@ public class AdminService : IAdminService
         if (userSettings.Count > 0) _db.UserSettings.RemoveRange(userSettings);
 
         if (!_accounts.TryDeleteUser(targetEmail, out var deleteErr))
-            return (false, deleteErr ?? "Kullanici silinemedi.");
+            return (false, deleteErr ?? "User could not be deleted.");
 
         _db.ActivityEntries.Add(new ActivityEntry
         {
             Id = Guid.NewGuid(),
             UserEmail = actorEmail,
-            Message = $"Admin, \"{targetEmail}\" kullanicisini sildi.",
+            Message = $"Admin deleted user \"{targetEmail}\".",
             CreatedAtUtc = DateTime.UtcNow,
         });
 
@@ -206,6 +212,7 @@ public class AdminService : IAdminService
                 OwnerEmail = x.OwnerEmail,
                 UploadDateUtc = x.CreatedAtUtc,
                 Status = x.Status,
+                IsBanned = x.IsBanned,
             })
             .ToListAsync(cancellationToken);
 
@@ -225,6 +232,26 @@ public class AdminService : IAdminService
 
         var ocr = await _db.OcrResults.CountAsync(x => x.DocumentId == id, cancellationToken);
         var ai = await _db.AiResults.CountAsync(x => x.DocumentId == id, cancellationToken);
+        var chats = await _db.ChatMessages.AsNoTracking()
+            .Where(x => x.DocumentId == id)
+            .OrderByDescending(x => x.CreatedAtUtc)
+            .Take(200)
+            .Select(x => new AdminChatMessageRowViewModel
+            {
+                Id = x.Id,
+                UserEmail = x.UserEmail,
+                Role = x.Role,
+                MessageType = x.MessageType,
+                Text = x.Text,
+                ImageUrl = x.ImageUrl,
+                AudioUrl = x.AudioUrl,
+                ResultUrl = x.ResultUrl,
+                IsBanned = x.IsBanned,
+                BanReason = x.BanReason,
+                CreatedAtUtc = x.CreatedAtUtc,
+                BannedAtUtc = x.BannedAtUtc,
+            })
+            .ToListAsync(cancellationToken);
 
         return new AdminDocumentDetailsViewModel
         {
@@ -237,6 +264,10 @@ public class AdminService : IAdminService
             UpdatedAtUtc = d.UpdatedAtUtc,
             OcrCount = ocr,
             AiCount = ai,
+            IsBanned = d.IsBanned,
+            BanReason = d.BanReason,
+            BannedAtUtc = d.BannedAtUtc,
+            ChatMessages = chats,
         };
     }
 
@@ -244,10 +275,75 @@ public class AdminService : IAdminService
     {
         var d = await _db.Documents.AsNoTracking().FirstOrDefaultAsync(x => x.Id == id, cancellationToken);
         if (d == null)
-            return (false, "Belge bulunamadı.");
+            return (false, "Document not found.");
 
         var result = await _documentService.DeleteAsync(d.OwnerEmail, id, cancellationToken);
         return result;
+    }
+
+    public async Task<(Stream? Stream, string? ContentType, string? DownloadName)> OpenDocumentPdfAsync(
+        Guid id,
+        CancellationToken cancellationToken = default)
+    {
+        var d = await _db.Documents.AsNoTracking().FirstOrDefaultAsync(x => x.Id == id, cancellationToken);
+        if (d == null)
+            return (null, null, null);
+
+        var abs = Path.Combine(_env.ContentRootPath, d.StorageRelativePath.Replace('/', Path.DirectorySeparatorChar));
+        if (!File.Exists(abs))
+            return (null, null, null);
+
+        var stream = new FileStream(abs, FileMode.Open, FileAccess.Read, FileShare.Read);
+        return (stream, d.ContentType, d.FileName);
+    }
+
+    public async Task<(bool Ok, string? ErrorMessage)> SetDocumentBanAsync(
+        Guid id,
+        bool isBanned,
+        string? reason,
+        CancellationToken cancellationToken = default)
+    {
+        var d = await _db.Documents.FirstOrDefaultAsync(x => x.Id == id, cancellationToken);
+        if (d == null)
+            return (false, "Document not found.");
+
+        d.IsBanned = isBanned;
+        d.BanReason = isBanned ? (reason?.Trim() ?? string.Empty) : string.Empty;
+        d.BannedAtUtc = isBanned ? DateTime.UtcNow : null;
+        d.UpdatedAtUtc = DateTime.UtcNow;
+        _db.ActivityEntries.Add(new ActivityEntry
+        {
+            Id = Guid.NewGuid(),
+            UserEmail = "admin",
+            Message = isBanned ? $"Admin banned document \"{d.Title}\"." : $"Admin removed the ban from document \"{d.Title}\".",
+            CreatedAtUtc = DateTime.UtcNow,
+        });
+        await _db.SaveChangesAsync(cancellationToken);
+        return (true, null);
+    }
+
+    public async Task<(bool Ok, string? ErrorMessage)> SetChatMessageBanAsync(
+        Guid id,
+        bool isBanned,
+        string? reason,
+        CancellationToken cancellationToken = default)
+    {
+        var msg = await _db.ChatMessages.FirstOrDefaultAsync(x => x.Id == id, cancellationToken);
+        if (msg == null)
+            return (false, "Chat message not found.");
+
+        msg.IsBanned = isBanned;
+        msg.BanReason = isBanned ? (reason?.Trim() ?? string.Empty) : string.Empty;
+        msg.BannedAtUtc = isBanned ? DateTime.UtcNow : null;
+        _db.ActivityEntries.Add(new ActivityEntry
+        {
+            Id = Guid.NewGuid(),
+            UserEmail = "admin",
+            Message = isBanned ? $"Admin chat mesajini banladi ({msg.UserEmail})." : $"Admin chat mesaji banini kaldirdi ({msg.UserEmail}).",
+            CreatedAtUtc = DateTime.UtcNow,
+        });
+        await _db.SaveChangesAsync(cancellationToken);
+        return (true, null);
     }
 
     public async Task<AdminLogsViewModel> GetLogsAsync(string? actionFilter, CancellationToken cancellationToken = default)

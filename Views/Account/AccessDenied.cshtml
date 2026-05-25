@@ -1,5 +1,5 @@
 @{
-    ViewData["Title"] = "Erisim Engellendi";
+    ViewData["Title"] = "Access Denied";
 }
 
 @*
@@ -17,11 +17,11 @@
 <div class="container py-5">
     <div class="card border-0 shadow-sm mx-auto" style="max-width: 42rem;">
         <div class="card-body p-4 text-center">
-            <h1 class="h4 fw-bold text-danger mb-2">Bu sayfaya erisim yetkiniz yok</h1>
+            <h1 class="h4 fw-bold text-danger mb-2">You do not have permission to access this page</h1>
             <p class="text-muted mb-4">
-                Yalnizca yonetici rolundeki kullanicilar admin paneline erisebilir.
+                Only users with the administrator role can access the admin panel.
             </p>
-            <a class="btn btn-accent" asp-controller="Home" asp-action="Index">Ana sayfaya don</a>
+            <a class="btn btn-accent" asp-controller="Home" asp-action="Index">Back to home</a>
         </div>
     </div>
 </div>

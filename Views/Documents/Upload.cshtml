@@ -11,14 +11,14 @@
 *@
 @model pdf_bitirme.Models.ViewModels.UploadViewModel
 @{
-    ViewData["Title"] = "PDF yükle";
+    ViewData["Title"] = "Upload PDF";
     var maxMb = pdf_bitirme.Models.ViewModels.DocumentUploadConstants.MaxBytes / (1024 * 1024);
 }
 
 <div class="app-page-header py-4 border-bottom border-light-subtle mb-4">
     <div class="container">
-        <h1 class="h2 fw-bold text-app-primary mb-1">PDF yükle</h1>
-        <p class="text-muted mb-0 small">Yalnızca .pdf · en fazla @maxMb MB · başlık boş bırakılırsa dosya adı kullanılır.</p>
+        <h1 class="h2 fw-bold text-app-primary mb-1">Upload PDF</h1>
+        <p class="text-muted mb-0 small">PDF only · max @maxMb MB · if the title is empty, the file name is used.</p>
     </div>
 </div>
 
@@ -32,24 +32,34 @@
 
                         <div class="mb-4">
                             <label asp-for="Title" class="form-label fw-medium"></label>
-                            <input asp-for="Title" class="form-control form-control-lg border-app" placeholder="Örn. Tez Bölüm 2" />
+                            <input asp-for="Title" class="form-control form-control-lg border-app" placeholder="e.g. Thesis Chapter 2" />
                             <span asp-validation-for="Title" class="text-danger small d-block"></span>
                         </div>
 
-                        <label class="form-label fw-medium">Dosya</label>
+                        <label class="form-label fw-medium">File</label>
                         <div class="upload-drop-zone rounded-4 p-5 text-center mb-2" id="drop-zone" data-max-mb="@maxMb">
                             <input asp-for="File" type="file" accept=".pdf,application/pdf" class="d-none" id="file-input" />
-                            <div class="mb-2 text-muted" id="drop-hint">PDF’yi buraya sürükleyin veya</div>
-                            <button type="button" class="btn btn-outline-secondary" id="pick-file">Dosya seç</button>
+                            <div class="mb-2 text-muted" id="drop-hint">Drag the PDF here or</div>
+                            <button type="button" class="btn btn-outline-secondary" id="pick-file">Choose file</button>
                             <div class="small text-muted mt-3 mb-0" id="file-name"></div>
                         </div>
                         <div class="small text-danger mb-2 d-none" id="upload-client-error"></div>
                         <span asp-validation-for="File" class="text-danger small d-block mb-4"></span>
 
-                        <button type="submit" class="btn btn-accent btn-lg w-100">Yükle</button>
+                        <div class="border rounded-3 bg-light-subtle p-3 mb-4">
+                            <div class="form-check">
+                                <input asp-for="CopyrightResponsibilityAccepted" class="form-check-input" required />
+                                <label asp-for="CopyrightResponsibilityAccepted" class="form-check-label small">
+                                    I confirm that I am responsible for all copyright, permission, and legal obligations related to this document, including any changes, AI processing, outputs, translations, summaries, visualizations, or generated content created from it.
+                                </label>
+                            </div>
+                            <span asp-validation-for="CopyrightResponsibilityAccepted" class="text-danger small d-block mt-2"></span>
+                        </div>
+
+                        <button type="submit" class="btn btn-accent btn-lg w-100">Upload</button>
                     </form>
                     <p class="small text-muted mt-3 mb-0 text-center">
-                        <a asp-action="Index" class="link-app">← Belgeler listesine dön</a>
+                        <a asp-action="Index" class="link-app">← Back to documents</a>
                     </p>
                 </div>
             </div>
@@ -86,11 +96,11 @@
                 if (!file) { input.value = ''; showName(null); return; }
                 showClientError('');
                 if (file.size > maxMb * 1024 * 1024) {
-                    showClientError('Dosya ' + maxMb + ' MB sınırını aşıyor.');
+                    showClientError('The file exceeds the ' + maxMb + ' MB limit.');
                     return;
                 }
                 if (!file.name.toLowerCase().endsWith('.pdf')) {
-                    showClientError('Yalnızca PDF dosyası seçebilirsiniz.');
+                    showClientError('You can only select PDF files.');
                     return;
                 }
                 var dt = new DataTransfer();

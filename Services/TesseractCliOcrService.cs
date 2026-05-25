@@ -42,7 +42,7 @@ public class TesseractCliOcrService : IOcrService
         CancellationToken cancellationToken = default)
     {
         if (string.IsNullOrWhiteSpace(pdfFilePath) || !File.Exists(pdfFilePath))
-            throw new InvalidOperationException("OCR için PDF dosya yolu bulunamadı.");
+            throw new InvalidOperationException("PDF file path could not be found for OCR.");
 
         var ocrCfg = _config.GetSection("Ocr");
         var pdftoppmPath = ocrCfg["PdfToPpmPath"] ?? "pdftoppm";
@@ -70,7 +70,7 @@ public class TesseractCliOcrService : IOcrService
                 cancellationToken);
 
             if (!File.Exists(rasterPng))
-                throw new InvalidOperationException("PDF sayfası görüntüye dönüştürülemedi.");
+                throw new InvalidOperationException("PDF page could not be converted to an image.");
 
             CropRegion(rasterPng, cropPng, region);
 
@@ -80,17 +80,17 @@ public class TesseractCliOcrService : IOcrService
                 cancellationToken);
 
             if (!File.Exists(outTxt))
-                throw new InvalidOperationException("Tesseract çıktı dosyası üretilemedi.");
+                throw new InvalidOperationException("Tesseract output file could not be generated.");
 
             var text = await File.ReadAllTextAsync(outTxt, cancellationToken);
             if (string.IsNullOrWhiteSpace(text))
-                text = "[Tesseract OCR] Metin tespit edilemedi veya bölge boş.";
+                text = "[Tesseract OCR] No text could be detected or the region is empty.";
 
             return text.Trim();
         }
         catch (Exception ex)
         {
-            _logger.LogError(ex, "Tesseract OCR hatası. Doküman: {Document}", documentTitle);
+            _logger.LogError(ex, "Tesseract OCR error. Document: {Document}", documentTitle);
             throw;
         }
         finally
@@ -112,7 +112,7 @@ public class TesseractCliOcrService : IOcrService
         CancellationToken cancellationToken = default)
     {
         if (imageBytes == null || imageBytes.Length == 0)
-            throw new InvalidOperationException("OCR için görüntü baytları boş.");
+            throw new InvalidOperationException("Image bytes for OCR are empty.");
 
         var ocrCfg = _config.GetSection("Ocr");
         var tesseractPath = ocrCfg["TesseractPath"] ?? "tesseract";
@@ -136,17 +136,17 @@ public class TesseractCliOcrService : IOcrService
                 cancellationToken);
 
             if (!File.Exists(outTxt))
-                throw new InvalidOperationException("Tesseract çıktı dosyası üretilemedi.");
+                throw new InvalidOperationException("Tesseract output file could not be generated.");
 
             var text = await File.ReadAllTextAsync(outTxt, cancellationToken);
             if (string.IsNullOrWhiteSpace(text))
-                text = "[Tesseract OCR] Metin tespit edilemedi veya bölge boş.";
+                text = "[Tesseract OCR] No text could be detected or the region is empty.";
 
             return text.Trim();
         }
         catch (Exception ex)
         {
-            _logger.LogError(ex, "Tesseract OCR (image) hatası. Doküman: {Document}", documentTitle);
+            _logger.LogError(ex, "Tesseract OCR (image) error. Document: {Document}", documentTitle);
             throw;
         }
         finally
@@ -223,7 +223,7 @@ public class TesseractCliOcrService : IOcrService
             var stdout = await process.StandardOutput.ReadToEndAsync(cancellationToken);
             var msg = string.Format(
                 CultureInfo.InvariantCulture,
-                "Komut basarisiz: {0} {1} | ExitCode={2} | STDERR={3} | STDOUT={4}",
+                "Command failed: {0} {1} | ExitCode={2} | STDERR={3} | STDOUT={4}",
                 fileName, args, process.ExitCode, stderr, stdout);
             throw new InvalidOperationException(msg);
         }

@@ -13,17 +13,17 @@ namespace pdf_bitirme.Models;
  */
 public class LoginViewModel
 {
-    [Required(ErrorMessage = "E-posta gerekli.")]
-    [EmailAddress(ErrorMessage = "Geçerli bir e-posta girin.")]
-    [Display(Name = "E-posta")]
+    [Required(ErrorMessage = "Email is required.")]
+    [EmailAddress(ErrorMessage = "Enter a valid email address.")]
+    [Display(Name = "Email")]
     public string Email { get; set; } = string.Empty;
 
-    [Required(ErrorMessage = "Parola gerekli.")]
+    [Required(ErrorMessage = "Password is required.")]
     [DataType(DataType.Password)]
-    [Display(Name = "Parola")]
+    [Display(Name = "Password")]
     public string Password { get; set; } = string.Empty;
 
-    [Display(Name = "Beni hatırla")]
+    [Display(Name = "Remember me")]
     public bool RememberMe { get; set; }
 
     /// <summary>Giriş sonrası yönlendirme (opsiyonel).</summary>

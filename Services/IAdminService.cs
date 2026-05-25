@@ -30,7 +30,13 @@ public interface IAdminService
 
     Task<AdminDocumentDetailsViewModel?> GetDocumentDetailsAsync(Guid id, CancellationToken cancellationToken = default);
 
+    Task<(Stream? Stream, string? ContentType, string? DownloadName)> OpenDocumentPdfAsync(Guid id, CancellationToken cancellationToken = default);
+
     Task<(bool Ok, string? ErrorMessage)> DeleteDocumentAsync(Guid id, CancellationToken cancellationToken = default);
+
+    Task<(bool Ok, string? ErrorMessage)> SetDocumentBanAsync(Guid id, bool isBanned, string? reason, CancellationToken cancellationToken = default);
+
+    Task<(bool Ok, string? ErrorMessage)> SetChatMessageBanAsync(Guid id, bool isBanned, string? reason, CancellationToken cancellationToken = default);
 
     Task<AdminLogsViewModel> GetLogsAsync(string? actionFilter, CancellationToken cancellationToken = default);
 }

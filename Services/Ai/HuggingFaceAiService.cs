@@ -81,17 +81,23 @@ public class HuggingFaceAiService : IAiService
     {
         if (string.IsNullOrWhiteSpace(request.InputText))
         {
+            if (string.Equals(request.OperationType, "Visualize", StringComparison.OrdinalIgnoreCase)
+                && !string.IsNullOrWhiteSpace(request.CustomInstruction))
+            {
+                return await VisualizeAsync(documentTitle, request, cancellationToken);
+            }
+
             if (string.Equals(request.OperationType, "Math", StringComparison.OrdinalIgnoreCase)
                 && !string.IsNullOrWhiteSpace(request.CustomInstruction))
             {
                 return new AiServiceResult
                 {
                     OutputText =
-                        "[Math için Gemini görsel model veya Wolfram Alpha seçin. HuggingFace bu işlemi desteklemez.]"
+                        "[For Math, select a Gemini image model or Wolfram Alpha. HuggingFace does not support this operation.]"
                 };
             }
 
-            return new AiServiceResult { OutputText = "[İşlenecek metin boş]" };
+            return new AiServiceResult { OutputText = "[Text to process is empty]" };
         }
 
         try
@@ -110,16 +116,16 @@ public class HuggingFaceAiService : IAiService
                 "Math" => new AiServiceResult
                 {
                     OutputText =
-                        "[Math grafikleri için Gemini görsel model veya Wolfram Alpha seçin. Metin tabanlı HF modelleri uygun değildir.]"
+                        "[For Math charts, select a Gemini image model or Wolfram Alpha. Text-based HF models are not suitable.]"
                 },
-                _ => new AiServiceResult { OutputText = $"[Desteklenmeyen işlem: {request.OperationType}]" }
+                _ => new AiServiceResult { OutputText = $"[Unsupported operation: {request.OperationType}]" }
             };
         }
         catch (Exception ex)
         {
-            _logger.LogError(ex, "HuggingFace AI işlemi başarısız. Model={Model}, Op={Op}",
+            _logger.LogError(ex, "HuggingFace AI operation failed. Model={Model}, Op={Op}",
                 request.ModelName, request.OperationType);
-            throw new InvalidOperationException($"HuggingFace hatası: {ex.Message}", ex);
+            throw new InvalidOperationException($"HuggingFace error: {ex.Message}", ex);
         }
     }
 
@@ -267,7 +273,7 @@ public class HuggingFaceAiService : IAiService
     {
         // [TR] FLUX ve diğer görsel modeller İngilizce prompt ister.
         //      Türkçe OCR metni ASCII'ye çevrilerek anahtar kelimeler alınır.
-        var prompt = BuildEnglishImagePrompt(documentTitle, request.InputText!);
+        var prompt = BuildEnglishImagePrompt(documentTitle, request.InputText ?? string.Empty, request.CustomInstruction);
 
         // [TR] Negative prompt: istenmeyen öğeleri engeller
         var negativePrompt = "blurry, low quality, distorted, text, watermark, ugly, bad anatomy";
@@ -290,7 +296,7 @@ public class HuggingFaceAiService : IAiService
 
         // [TR] Her model için tam URL: https://router.huggingface.co/hf-inference/models/{model}
         var fullUrl = $"{ImagePipelineBase}/{request.ModelName}";
-        _logger.LogInformation("HuggingFace image isteği → {Url}", fullUrl);
+        _logger.LogInformation("HuggingFace image request -> {Url}", fullUrl);
 
         var response = await _http.PostAsync(fullUrl, content, ct);
 
@@ -309,7 +315,7 @@ public class HuggingFaceAiService : IAiService
             }
             catch { errDetail = errBody; }
 
-            throw new InvalidOperationException($"HuggingFace Görsel hatası ({(int)response.StatusCode}): {errDetail}");
+            throw new InvalidOperationException($"HuggingFace image error ({(int)response.StatusCode}): {errDetail}");
         }
 
         var contentType = response.Content.Headers.ContentType?.MediaType ?? "";
@@ -326,14 +332,14 @@ public class HuggingFaceAiService : IAiService
 
             return new AiServiceResult
             {
-                OutputText    = "Görsel başarıyla üretildi (HuggingFace Stable Diffusion).",
+                OutputText    = "Image generated successfully (HuggingFace Stable Diffusion).",
                 OutputImageUrl = $"/ai-images/{fileName}"
             };
         }
 
         // [TR] Beklenmeyen JSON yanıtı — hata mesajı olabilir
         var raw = await response.Content.ReadAsStringAsync(ct);
-        return new AiServiceResult { OutputText = $"[Beklenmeyen yanıt formatı]: {raw}" };
+        return new AiServiceResult { OutputText = $"[Unexpected response format]: {raw}" };
     }
 
     // ─── YARDIMCI: Chat Completions API çağrısı ───────────────────────────────
@@ -369,7 +375,7 @@ public class HuggingFaceAiService : IAiService
         var json = JsonSerializer.Serialize(payload, JsonOpts);
         var content = new StringContent(json, Encoding.UTF8, "application/json");
 
-        _logger.LogInformation("HuggingFace isteği → model={Model}, endpoint={Endpoint}",
+        _logger.LogInformation("HuggingFace request -> model={Model}, endpoint={Endpoint}",
             modelId, ChatEndpoint);
 
         var response = await _http.PostAsync(ChatEndpoint, content, ct);
@@ -402,7 +408,7 @@ public class HuggingFaceAiService : IAiService
                 errDetail = body;
             }
 
-            throw new InvalidOperationException($"HuggingFace API hatası ({(int)response.StatusCode}): {errDetail}");
+            throw new InvalidOperationException($"HuggingFace API error ({(int)response.StatusCode}): {errDetail}");
         }
 
         // [TR] OpenAI uyumlu başarılı yanıt: choices[0].message.content
@@ -412,7 +418,7 @@ public class HuggingFaceAiService : IAiService
         //      3) "content": null  (bazı reasoning modelleri)   ← null; reasoning_content'e bak
         //      Bu üç durum da aşağıda güvenli biçimde ele alınır.
         using var doc = JsonDocument.Parse(body);
-        _logger.LogDebug("HuggingFace başarılı yanıt: {Body}", body.Length > 500 ? body[..500] : body);
+        _logger.LogDebug("HuggingFace successful response: {Body}", body.Length > 500 ? body[..500] : body);
 
         var messageEl = doc.RootElement
             .GetProperty("choices")[0]
@@ -486,12 +492,16 @@ public class HuggingFaceAiService : IAiService
     // ─── PROMPT YARDIMCISI ────────────────────────────────────────────────────
     /// <summary>
     /// Görsel modeller için İngilizce prompt oluşturur.
-    /// [TR] Türkçe metin ASCII'ye dönüştürülür; anlamlı kelimeler tutulur.
-    ///      Kalite etiketleri eklenerek FLUX/SD çıktı kalitesi artırılır.
+    /// [TR] Türkçe metin ve kullanıcının özel prompt'u ASCII'ye dönüştürülür;
+    ///      özel prompt varsa görsel yönergesinde öncelikli kullanılır.
     /// </summary>
-    private static string BuildEnglishImagePrompt(string documentTitle, string inputText)
+    private static string BuildEnglishImagePrompt(string documentTitle, string inputText, string? customInstruction)
     {
-        var asciiOnly = new string(inputText
+        var mergedInput = string.IsNullOrWhiteSpace(customInstruction)
+            ? inputText
+            : $"{customInstruction} {inputText}";
+
+        var asciiOnly = new string(mergedInput
             .Where(c => c < 128 && (char.IsLetterOrDigit(c) || char.IsWhiteSpace(c)))
             .ToArray());
 
@@ -519,7 +529,11 @@ public class HuggingFaceAiService : IAiService
                 : $"A professional illustration representing '{titleAscii}'";
         }
 
-        return $"A detailed professional illustration about {subject}. " +
+        var instructionPrefix = string.IsNullOrWhiteSpace(customInstruction)
+            ? ""
+            : $"Follow this user visual instruction: {new string(customInstruction.Where(c => c < 128).ToArray())}. ";
+
+        return $"{instructionPrefix}A detailed professional illustration about {subject}. " +
                "High quality, sharp, photorealistic, 4K, vibrant colors.";
     }
 }

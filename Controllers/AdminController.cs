@@ -13,6 +13,7 @@ namespace pdf_bitirme.Controllers;
  * MODIFICATION NOTES (TR)
  * - Moderator/SuperAdmin rolleri için action bazlı ek [Authorize] kuralları eklenebilir.
  * - Gelişmiş sayfalama/sıralama ile büyük veri performansı artırılabilir.
+ * - Admin belge detayında sahiplik kısıtına takılmadan PDF önizleme için Pdf action eklendi.
  * - Bu admin yapısı bitirme projesi kapsamında bilinçli olarak basit tutulmuştur; sonra genişletilebilir.
  * - Genel image-to-text bu sürümde yoktur, future work olarak planlanmıştır.
  * - Zorluk: Orta.
@@ -47,7 +48,7 @@ public class AdminController : Controller
         var vm = await _adminService.GetUserDetailsAsync(id, cancellationToken);
         if (vm == null)
         {
-            TempData["ErrorMessage"] = "Kullanici bulunamadi.";
+            TempData["ErrorMessage"] = "User not found.";
             return RedirectToAction(nameof(Users));
         }
 
@@ -67,7 +68,7 @@ public class AdminController : Controller
 
         var (ok, err) = await _adminService.SetUserActiveAsync(email, makeActive, cancellationToken);
         TempData[ok ? "SuccessMessage" : "ErrorMessage"] =
-            ok ? (makeActive ? "Kullanici tekrar aktif edildi." : "Kullanici pasif yapildi.") : (err ?? "Islem basarisiz.");
+            ok ? (makeActive ? "User has been reactivated." : "User has been deactivated.") : (err ?? "Operation failed.");
         return RedirectToAction(nameof(UserDetails), new { id = email });
     }
 
@@ -78,7 +79,7 @@ public class AdminController : Controller
         var actorEmail = User.Identity?.Name ?? string.Empty;
         var (ok, err) = await _adminService.DeleteUserAsync(email, actorEmail, cancellationToken);
         TempData[ok ? "SuccessMessage" : "ErrorMessage"] =
-            ok ? "Kullanici ve iliskili verileri silindi." : (err ?? "Kullanici silme islemi basarisiz.");
+            ok ? "User and related data were deleted." : (err ?? "User deletion failed.");
         return RedirectToAction(nameof(Users));
     }
 
@@ -95,11 +96,24 @@ public class AdminController : Controller
         var vm = await _adminService.GetDocumentDetailsAsync(id, cancellationToken);
         if (vm == null)
         {
-            TempData["ErrorMessage"] = "Belge bulunamadi.";
+            TempData["ErrorMessage"] = "Document not found.";
             return RedirectToAction(nameof(Documents));
         }
 
         return View(vm);
+    }
+
+    [HttpGet]
+    public async Task<IActionResult> Pdf(Guid id, CancellationToken cancellationToken)
+    {
+        var (stream, contentType, fileName) = await _adminService.OpenDocumentPdfAsync(id, cancellationToken);
+        if (stream == null || contentType == null || fileName == null)
+            return NotFound();
+
+        // [TR] HTTP header değerleri ASCII olmalı; Türkçe karakterli dosya adları InvalidOperationException üretir.
+        // Admin önizlemede inline kalması yeterli olduğundan güvenli ASCII fallback kullanıyoruz.
+        Response.Headers["Content-Disposition"] = $"inline; filename=\"admin-document-{id:N}.pdf\"";
+        return File(stream, contentType, enableRangeProcessing: true);
     }
 
     [HttpPost]
@@ -108,8 +122,28 @@ public class AdminController : Controller
     {
         var (ok, err) = await _adminService.DeleteDocumentAsync(id, cancellationToken);
         TempData[ok ? "SuccessMessage" : "ErrorMessage"] =
-            ok ? "Belge admin panelinden silindi." : (err ?? "Silme islemi basarisiz.");
+            ok ? "Document was deleted from the admin panel." : (err ?? "Delete operation failed.");
         return RedirectToAction(nameof(Documents));
+    }
+
+    [HttpPost]
+    [ValidateAntiForgeryToken]
+    public async Task<IActionResult> SetDocumentBan(Guid id, bool isBanned, string? reason, CancellationToken cancellationToken)
+    {
+        var (ok, err) = await _adminService.SetDocumentBanAsync(id, isBanned, reason, cancellationToken);
+        TempData[ok ? "SuccessMessage" : "ErrorMessage"] =
+            ok ? (isBanned ? "Document has been banned." : "Document ban has been removed.") : (err ?? "Document ban operation failed.");
+        return RedirectToAction(nameof(DocumentDetails), new { id });
+    }
+
+    [HttpPost]
+    [ValidateAntiForgeryToken]
+    public async Task<IActionResult> SetChatMessageBan(Guid id, Guid documentId, bool isBanned, string? reason, CancellationToken cancellationToken)
+    {
+        var (ok, err) = await _adminService.SetChatMessageBanAsync(id, isBanned, reason, cancellationToken);
+        TempData[ok ? "SuccessMessage" : "ErrorMessage"] =
+            ok ? (isBanned ? "Chat message has been banned." : "Chat message ban has been removed.") : (err ?? "Chat ban operation failed.");
+        return RedirectToAction(nameof(DocumentDetails), new { id = documentId });
     }
 
     [HttpGet]

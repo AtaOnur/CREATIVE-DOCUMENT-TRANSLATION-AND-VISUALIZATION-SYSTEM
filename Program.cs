@@ -187,6 +187,8 @@ using (var scope = app.Services.CreateScope())
             InputText TEXT NOT NULL,
             OutputText TEXT NOT NULL,
             OutputImageUrl TEXT NOT NULL,
+            OutputAudioUrl TEXT NOT NULL DEFAULT '',
+            OutputAudioContentType TEXT NOT NULL DEFAULT '',
             IsSaved INTEGER NOT NULL,
             CreatedAtUtc TEXT NOT NULL,
             UpdatedAtUtc TEXT NOT NULL
@@ -195,6 +197,29 @@ using (var scope = app.Services.CreateScope())
     EnsureColumn(db, "ai_results", "SourcePageNumber", "ALTER TABLE ai_results ADD COLUMN SourcePageNumber INTEGER NOT NULL DEFAULT 1;");
     EnsureColumn(db, "ai_results", "NoteTitle", "ALTER TABLE ai_results ADD COLUMN NoteTitle TEXT NOT NULL DEFAULT '';");
     EnsureColumn(db, "ai_results", "UserNote", "ALTER TABLE ai_results ADD COLUMN UserNote TEXT NOT NULL DEFAULT '';");
+    EnsureColumn(db, "ai_results", "OutputAudioUrl", "ALTER TABLE ai_results ADD COLUMN OutputAudioUrl TEXT NOT NULL DEFAULT '';");
+    EnsureColumn(db, "ai_results", "OutputAudioContentType", "ALTER TABLE ai_results ADD COLUMN OutputAudioContentType TEXT NOT NULL DEFAULT '';");
+    EnsureColumn(db, "documents", "IsBanned", "ALTER TABLE documents ADD COLUMN IsBanned INTEGER NOT NULL DEFAULT 0;");
+    EnsureColumn(db, "documents", "BanReason", "ALTER TABLE documents ADD COLUMN BanReason TEXT NOT NULL DEFAULT '';");
+    EnsureColumn(db, "documents", "BannedAtUtc", "ALTER TABLE documents ADD COLUMN BannedAtUtc TEXT NULL;");
+    db.Database.ExecuteSqlRaw(
+        """
+        CREATE TABLE IF NOT EXISTS chat_messages (
+            Id TEXT NOT NULL PRIMARY KEY,
+            DocumentId TEXT NOT NULL,
+            UserEmail TEXT NOT NULL,
+            Role TEXT NOT NULL,
+            MessageType TEXT NOT NULL,
+            Text TEXT NOT NULL,
+            ImageUrl TEXT NOT NULL,
+            AudioUrl TEXT NOT NULL,
+            ResultUrl TEXT NOT NULL,
+            IsBanned INTEGER NOT NULL,
+            BanReason TEXT NOT NULL,
+            CreatedAtUtc TEXT NOT NULL,
+            BannedAtUtc TEXT NULL
+        );
+        """);
     db.Database.ExecuteSqlRaw(
         """
         CREATE TABLE IF NOT EXISTS user_settings (
@@ -337,7 +362,7 @@ static void SeedDemoData(string contentRootPath, AppDbContext db)
     {
         Id = doc1Id,
         OwnerEmail = demoEmail,
-        Title = "Demo Belge - Akademik Ozet",
+        Title = "Demo Document - Academic Summary",
         FileName = "demo-akademik.pdf",
         ContentType = "application/pdf",
         SizeBytes = new FileInfo(doc1Physical).Length,
@@ -360,10 +385,10 @@ static void SeedDemoData(string contentRootPath, AppDbContext db)
         SourcePageNumber = 2,
         Style = "Academic",
         CustomInstruction = "rewrite academically",
-        NoteTitle = "Juri Sunumu Icin Ozet",
-        UserNote = "Savunmada bu bolumu gosterecegim.",
-        InputText = "Demo metin: OCR ile secilen alandan elde edilen metin ornegi.",
-        OutputText = "Bu demo ozet, secili PDF bolgesindeki icerigi akademik ve kisa bicimde sunar.",
+        NoteTitle = "Summary for Jury Presentation",
+        UserNote = "I will show this section during the defense.",
+        InputText = "Demo text: sample text extracted from a selected area with OCR.",
+        OutputText = "This demo summary presents the content from the selected PDF region in an academic and concise way.",
         OutputImageUrl = string.Empty,
         IsSaved = true,
         CreatedAtUtc = now.AddDays(-1),
@@ -374,7 +399,7 @@ static void SeedDemoData(string contentRootPath, AppDbContext db)
     {
         Id = Guid.NewGuid(),
         UserEmail = demoEmail,
-        Message = "\"Demo Belge - Akademik Ozet\" seed verisi eklendi.",
+        Message = "\"Demo Document - Academic Summary\" seed data was added.",
         CreatedAtUtc = now.AddHours(-2),
     });
 

@@ -9,7 +9,7 @@
 *@
 @model pdf_bitirme.Models.LoginViewModel
 @{
-    ViewData["Title"] = "Giriş";
+    ViewData["Title"] = "Login";
 }
 
 <div class="auth-page py-5">
@@ -18,8 +18,8 @@
             <div class="col-md-8 col-lg-5">
                 <div class="card auth-card border-0">
                     <div class="card-body p-4 p-md-5">
-                        <h1 class="h3 fw-bold text-app-primary mb-1 text-center">Giriş</h1>
-                        <p class="text-muted small mb-4 text-center">CreativeDoc hesabınızla oturum açın.</p>
+                        <h1 class="h3 fw-bold text-app-primary mb-1 text-center">Login</h1>
+                        <p class="text-muted small mb-4 text-center">Sign in with your CreativeDoc account.</p>
 
                         @* E-posta doğrulama başarı mesajı (query param ile gelir, TempData kullanılmaz) *@
                         @if (ViewBag.VerifiedMessage is string verifiedMsg && !string.IsNullOrWhiteSpace(verifiedMsg))
@@ -33,8 +33,8 @@
                         @if (TempData["DemoVerifyLink"] is string verifyLink && !string.IsNullOrWhiteSpace(verifyLink))
                         {
                             <div class="alert alert-warning small">
-                                <strong>Demo doğrulama linki:</strong>
-                                <a href="@verifyLink" class="link-app">E-postami dogrula</a>
+                                <strong>Demo verification link:</strong>
+                                <a href="@verifyLink" class="link-app">Verify my email</a>
                             </div>
                         }
 
@@ -45,14 +45,14 @@
 
                             <div class="mb-3">
                                 <label asp-for="Email" class="form-label fw-medium"></label>
-                                <input asp-for="Email" class="form-control form-control-lg border-app" autocomplete="username" placeholder="ornek@universite.edu" />
+                                <input asp-for="Email" class="form-control form-control-lg border-app" autocomplete="username" placeholder="example@university.edu" />
                                 <span asp-validation-for="Email" class="text-danger small d-block"></span>
                             </div>
                             <div class="mb-3">
                                 <label asp-for="Password" class="form-label fw-medium"></label>
                                 <div class="input-group">
                                     <input asp-for="Password" id="loginPassword" class="form-control form-control-lg border-app" autocomplete="current-password" />
-                                    <button class="btn btn-outline-secondary" type="button" onclick="togglePassword('loginPassword', this)" title="Göster/Gizle">
+                                    <button class="btn btn-outline-secondary" type="button" onclick="togglePassword('loginPassword', this)" title="Show/Hide">
                                         <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" fill="currentColor" viewBox="0 0 16 16"><path d="M16 8s-3-5.5-8-5.5S0 8 0 8s3 5.5 8 5.5S16 8 16 8zM1.173 8a13.133 13.133 0 0 1 1.66-2.043C4.12 4.668 5.88 3.5 8 3.5c2.12 0 3.879 1.168 5.168 2.457A13.133 13.133 0 0 1 14.828 8c-.058.087-.122.183-.195.288-.335.48-.83 1.12-1.465 1.755C11.879 11.332 10.119 12.5 8 12.5c-2.12 0-3.879-1.168-5.168-2.457A13.134 13.134 0 0 1 1.172 8z"/><path d="M8 5.5a2.5 2.5 0 1 0 0 5 2.5 2.5 0 0 0 0-5zM4.5 8a3.5 3.5 0 1 1 7 0 3.5 3.5 0 0 1-7 0z"/></svg>
                                     </button>
                                 </div>
@@ -62,12 +62,12 @@
                                 <input asp-for="RememberMe" class="form-check-input" />
                                 <label asp-for="RememberMe" class="form-check-label small"></label>
                             </div>
-                            <button type="submit" class="btn btn-accent btn-lg w-100 mb-3">Giriş Yap</button>
+                            <button type="submit" class="btn btn-accent btn-lg w-100 mb-3">Login</button>
                         </form>
 
                         <div class="d-flex flex-column flex-sm-row justify-content-between gap-2 small">
-                            <a asp-action="ForgotPassword" class="link-app">Şifremi unuttum</a>
-                            <a asp-action="Register" class="link-app">Hesap oluştur</a>
+                            <a asp-action="ForgotPassword" class="link-app">Forgot password</a>
+                            <a asp-action="Register" class="link-app">Create account</a>
                         </div>
 
                         <hr class="my-4 text-muted opacity-25" />
@@ -77,7 +77,7 @@
                     </div>
                 </div>
                 <p class="text-center mt-3 small text-muted">
-                    <a asp-controller="Home" asp-action="Index" class="link-secondary">← Ana sayfaya dön</a>
+                    <a asp-controller="Home" asp-action="Index" class="link-secondary">← Back to home</a>
                 </p>
             </div>
         </div>

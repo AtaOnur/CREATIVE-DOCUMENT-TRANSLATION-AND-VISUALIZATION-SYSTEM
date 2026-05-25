@@ -75,11 +75,11 @@ public class GroqAiService : IAiService
                 return new AiServiceResult
                 {
                     OutputText =
-                        "[Math / grafik işlemi Groq ile yapılamaz. Model olarak Gemini görsel veya Wolfram Alpha seçin.]"
+                        "[Math / chart operations cannot be done with Groq. Select a Gemini image model or Wolfram Alpha.]"
                 };
             }
 
-            return new AiServiceResult { OutputText = "[İşlenecek metin boş]" };
+            return new AiServiceResult { OutputText = "[Text to process is empty]" };
         }
 
         try
@@ -96,22 +96,22 @@ public class GroqAiService : IAiService
                 "Math" => new AiServiceResult
                 {
                     OutputText =
-                        "[Math görsel grafik veya Wolfram çözümü Groq ile desteklenmez. " +
-                        "Gemini 3.1 görsel model veya Wolfram Alpha seçiniz.]"
+                        "[Math image charts or Wolfram solutions are not supported with Groq. " +
+                        "Select a Gemini 3.1 image model or Wolfram Alpha.]"
                 },
                 "Visualize"     => new AiServiceResult
                 {
-                    OutputText = "[Görsel üretimi Groq modellerinde desteklenmemektedir. " +
-                                 "Lütfen Gemini Image modeli seçiniz.]"
+                    OutputText = "[Image generation is not supported by Groq models. " +
+                                 "Please select a Gemini Image model.]"
                 },
-                _ => new AiServiceResult { OutputText = $"[Desteklenmeyen işlem: {request.OperationType}]" }
+                _ => new AiServiceResult { OutputText = $"[Unsupported operation: {request.OperationType}]" }
             };
         }
         catch (Exception ex)
         {
-            _logger.LogError(ex, "Groq AI işlemi başarısız. Model={Model}, Op={Op}",
+            _logger.LogError(ex, "Groq AI operation failed. Model={Model}, Op={Op}",
                 request.ModelName, request.OperationType);
-            throw new InvalidOperationException($"Groq hatası: {ex.Message}", ex);
+            throw new InvalidOperationException($"Groq error: {ex.Message}", ex);
         }
     }
 
@@ -217,7 +217,7 @@ public class GroqAiService : IAiService
         var json    = JsonSerializer.Serialize(payload, JsonOpts);
         var content = new StringContent(json, Encoding.UTF8, "application/json");
 
-        _logger.LogInformation("Groq isteği → model={Model}", modelId);
+        _logger.LogInformation("Groq request -> model={Model}", modelId);
 
         var response = await _http.PostAsync(_options.BaseUrl, content, ct);
         var body     = await response.Content.ReadAsStringAsync(ct);
@@ -237,7 +237,7 @@ public class GroqAiService : IAiService
             }
             catch { errDetail = body; }
 
-            throw new InvalidOperationException($"Groq API hatası ({(int)response.StatusCode}): {errDetail}");
+            throw new InvalidOperationException($"Groq API error ({(int)response.StatusCode}): {errDetail}");
         }
 
         // [TR] choices[0].message.content — String veya Array formatlarını destekler

@@ -44,7 +44,7 @@ public class AccountController : Controller
         // TempData cookie yerine ViewBag kullanmak, cookie çakışmasından kaynaklanan
         // HTTP 400 (anti-forgery token hatası) sorununu önler.
         if (verified == "1")
-            ViewBag.VerifiedMessage = "E-posta doğrulaması tamamlandı. Şimdi giriş yapabilirsiniz.";
+            ViewBag.VerifiedMessage = "Email verification completed. You can now log in.";
 
         return View(new LoginViewModel { ReturnUrl = returnUrl });
     }
@@ -63,11 +63,11 @@ public class AccountController : Controller
             string loginError;
 
             if (account == null)
-                loginError = "E-posta veya parola hatalı.";
+                loginError = "Email or password is incorrect.";
             else if (!account.IsActive)
-                loginError = "Hesabınız pasif durumda. Yönetici ile iletişime geçin.";
+                loginError = "Your account is inactive. Please contact an administrator.";
             else
-                loginError = "E-posta veya parola hatalı.";
+                loginError = "Email or password is incorrect.";
 
             ModelState.AddModelError(string.Empty, loginError);
             return View(model);
@@ -90,12 +90,12 @@ public class AccountController : Controller
                     TempData["InfoMessage"] = $"Mail gonderimi su an yapilamadi ({sendError}). Demo link asagida gosterildi.";
                 }
             }
-            ModelState.AddModelError(string.Empty, "E-posta doğrulaması tamamlanmamış. Lütfen doğrulama linkini açın.");
+            ModelState.AddModelError(string.Empty, "Email verification is not complete. Please open the verification link.");
             return View(model);
         }
 
         await SignInAsync(model.Email, model.RememberMe);
-        AddAuthActivity(model.Email, "Kullanıcı giriş yaptı.");
+        AddAuthActivity(model.Email, "User logged in.");
         await _db.SaveChangesAsync();
         return RedirectToLocalOrHome(model.ReturnUrl);
     }
@@ -118,7 +118,7 @@ public class AccountController : Controller
 
         if (!_accounts.TryRegister(model.Email, model.Password, out var err))
         {
-            ModelState.AddModelError(string.Empty, err ?? "Kayıt başarısız.");
+            ModelState.AddModelError(string.Empty, err ?? "Registration failed.");
             return View(model);
         }
 
@@ -129,19 +129,19 @@ public class AccountController : Controller
             var (sent, sendError) = await _emailSender.SendEmailVerificationAsync(model.Email, verifyLink, HttpContext.RequestAborted);
             if (sent)
             {
-                TempData["InfoMessage"] = "Kayit basarili. Dogrulama e-postasi gonderildi, sonra giris yapabilirsiniz.";
+                TempData["InfoMessage"] = "Registration successful. A verification email was sent; you can log in afterward.";
             }
             else
             {
-                TempData["InfoMessage"] = $"Kayit basarili fakat mail gonderilemedi ({sendError}). Demo link ile dogrulama yapabilirsiniz.";
+                TempData["InfoMessage"] = $"Registration successful, but email could not be sent ({sendError}). You can verify using the demo link.";
                 TempData["DemoVerifyLink"] = verifyLink;
             }
         }
         else
         {
-            TempData["InfoMessage"] = "Kayit basarili. E-posta dogrulama adiminda beklenmeyen bir sorun olustu.";
+            TempData["InfoMessage"] = "Registration successful. An unexpected issue occurred during email verification setup.";
         }
-        AddAuthActivity(model.Email, "Yeni kullanıcı kaydı tamamlandı (e-posta doğrulaması bekleniyor).");
+        AddAuthActivity(model.Email, "New user registration completed (email verification pending).");
         await _db.SaveChangesAsync();
         return RedirectToAction(nameof(Login));
     }
@@ -168,8 +168,8 @@ public class AccountController : Controller
 
         // [TR] Kullanıcı yoksa bile aynı genel mesaj — e-posta sızdırma riskini azaltır.
         TempData["ForgotGenericMessage"] =
-            "Eğer bu adres sistemde kayıtlıysa, şifre sıfırlama yönergeleri gönderildi. " +
-            "(Demo: aşağıdaki kutuda bağlantı yalnızca kayıtlı e-postalar için gösterilir.)";
+            "If this address is registered in the system, password reset instructions have been sent. " +
+            "(Demo: the link below is shown only for registered emails.)";
         return RedirectToAction(nameof(ForgotPassword));
     }
 
@@ -178,7 +178,7 @@ public class AccountController : Controller
     {
         if (string.IsNullOrWhiteSpace(token))
         {
-            TempData["AuthError"] = "Geçersiz sıfırlama bağlantısı.";
+            TempData["AuthError"] = "Invalid reset link.";
             return RedirectToAction(nameof(ForgotPassword));
         }
 
@@ -194,11 +194,11 @@ public class AccountController : Controller
 
         if (!_accounts.TryResetPassword(model.Token, model.NewPassword, out var err))
         {
-            ModelState.AddModelError(string.Empty, err ?? "Sıfırlama başarısız.");
+            ModelState.AddModelError(string.Empty, err ?? "Reset failed.");
             return View(model);
         }
 
-        TempData["AuthMessage"] = "Parolanız güncellendi. Giriş yapabilirsiniz.";
+        TempData["AuthMessage"] = "Your password has been updated. You can log in.";
         return RedirectToAction(nameof(Login));
     }
 
@@ -211,7 +211,7 @@ public class AccountController : Controller
         await HttpContext.SignOutAsync(CookieAuthenticationDefaults.AuthenticationScheme);
         if (!string.IsNullOrWhiteSpace(email))
         {
-            AddAuthActivity(email, "Kullanıcı çıkış yaptı.");
+            AddAuthActivity(email, "User logged out.");
             await _db.SaveChangesAsync();
         }
         return RedirectToAction(nameof(HomeController.Index), "Home");
@@ -228,7 +228,7 @@ public class AccountController : Controller
     {
         if (!_accounts.TryVerifyEmail(token ?? string.Empty, out var email, out var errorMessage))
         {
-            TempData["AuthError"] = errorMessage ?? "E-posta doğrulama başarısız.";
+            TempData["AuthError"] = errorMessage ?? "Email verification failed.";
             return RedirectToAction(nameof(Login));
         }
 
@@ -237,7 +237,7 @@ public class AccountController : Controller
         // bazı tarayıcılarda token uyuşmazlığı (HTTP 400) oluşuyordu.
         if (!string.IsNullOrWhiteSpace(email))
         {
-            AddAuthActivity(email, "E-posta doğrulaması tamamlandı.");
+            AddAuthActivity(email, "Email verification completed.");
             await _db.SaveChangesAsync();
         }
         return RedirectToAction(nameof(Login), new { verified = "1" });

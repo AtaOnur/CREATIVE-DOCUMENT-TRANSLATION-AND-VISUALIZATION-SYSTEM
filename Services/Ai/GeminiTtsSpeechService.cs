@@ -46,12 +46,12 @@ public class GeminiTtsSpeechService : IGeminiTtsSpeechService
     public async Task<GeminiSpeechSynthesisResult> SynthesizeAsync(string plainText, CancellationToken cancellationToken = default)
     {
         if (string.IsNullOrWhiteSpace(_opt.ApiKey))
-            throw new InvalidOperationException("Gemini API anahtarı eksik (Ai:Gemini:ApiKey veya User Secrets).");
+            throw new InvalidOperationException("Gemini API key is missing (Ai:Gemini:ApiKey or User Secrets).");
 
         var normalized = NormalizeTtsInput(plainText);
         var maxChars = Math.Clamp(_opt.TtsMaxTextCharacters, 250, 100_000);
         if (normalized.Length > maxChars)
-            throw new InvalidOperationException($"Seslendirme metni çok uzun (en fazla {maxChars} karakter). Metni kısaltın.");
+            throw new InvalidOperationException($"Narration text is too long (maximum {maxChars} characters). Please shorten the text.");
 
         var model = string.IsNullOrWhiteSpace(_opt.TtsModel)
             ? "gemini-3.1-flash-tts-preview"
@@ -88,20 +88,20 @@ public class GeminiTtsSpeechService : IGeminiTtsSpeechService
         }
         catch (Exception ex)
         {
-            _logger.LogError(ex, "Gemini TTS ağ isteği başarısız.");
-            throw new InvalidOperationException("Gemini seslendirme API'sine bağlanılamadı.", ex);
+            _logger.LogError(ex, "Gemini TTS network request failed.");
+            throw new InvalidOperationException("Could not connect to the Gemini narration API.", ex);
         }
 
         var raw = await resp.Content.ReadAsStringAsync(cancellationToken);
         if (!resp.IsSuccessStatusCode)
         {
-            _logger.LogWarning("Gemini TTS HTTP hata: {Code} — {Snippet}", (int)resp.StatusCode,
+            _logger.LogWarning("Gemini TTS HTTP error: {Code} - {Snippet}", (int)resp.StatusCode,
                 raw.Length > 1200 ? raw[..1200] + "…" : raw);
 
             var apiMsg = TryExtractGeminiErrorMessage(raw);
-            var hint = apiMsg ?? "Yanıtta ayrıntı yok. Model kimliği, API anahtarı veya istek gövdesi şeması kontrol edin.";
+            var hint = apiMsg ?? "No details in the response. Check the model ID, API key, or request body schema.";
             throw new InvalidOperationException(
-                $"Gemini TTS reddetti ({(int)resp.StatusCode}): {hint}");
+                $"Gemini TTS rejected the request ({(int)resp.StatusCode}): {hint}");
         }
 
         using var doc = JsonDocument.Parse(raw);
@@ -111,16 +111,16 @@ public class GeminiTtsSpeechService : IGeminiTtsSpeechService
             pf.TryGetProperty("blockReason", out var br) &&
             br.ValueKind == JsonValueKind.String &&
             br.GetString() is { } blocked && !string.IsNullOrWhiteSpace(blocked))
-            throw new InvalidOperationException($"Gemini içerik filtresi: {blocked}");
+            throw new InvalidOperationException($"Gemini content filter: {blocked}");
 
         if (!root.TryGetProperty("candidates", out var candidates) ||
             candidates.GetArrayLength() == 0)
-            throw new InvalidOperationException("Gemini TTS yanıtında aday içerik yok.");
+            throw new InvalidOperationException("Gemini TTS response does not contain candidate content.");
 
         var first = candidates[0];
         if (!first.TryGetProperty("content", out var content) ||
             !content.TryGetProperty("parts", out var partsArr))
-            throw new InvalidOperationException("Gemini TTS yanıtı parts içermiyor.");
+            throw new InvalidOperationException("Gemini TTS response does not contain parts.");
 
         foreach (var part in partsArr.EnumerateArray())
         {
@@ -148,7 +148,7 @@ public class GeminiTtsSpeechService : IGeminiTtsSpeechService
             }
             catch
             {
-                _logger.LogWarning("Gemini TTS inlineData base64 çözümlemesi başarısız.");
+                _logger.LogWarning("Gemini TTS inlineData base64 decoding failed.");
                 continue;
             }
 
@@ -159,7 +159,7 @@ public class GeminiTtsSpeechService : IGeminiTtsSpeechService
         }
 
         throw new InvalidOperationException(
-            "Gemini TTS ses verisi döndürmedi (inlineData yok veya beklenmeyen format). Farklı TtsModel deneyin.");
+            "Gemini TTS did not return audio data (no inlineData or unexpected format). Try a different TtsModel.");
     }
 
     /// <summary>

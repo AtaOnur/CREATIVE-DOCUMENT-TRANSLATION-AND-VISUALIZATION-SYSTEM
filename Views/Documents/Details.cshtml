@@ -7,9 +7,11 @@
     - Çoklu bölge seçimi (birden fazla kutu) ileride eklenebilir.
     - Tam sayfa OCR için tek tıklama aksiyonu eklenebilir.
     - Düzen: workspace-body = lg’de iki kolon (sol: PDF; sağ: üstte AI Sohbet, altında OCR + AI İşlem). Seçili bölge xy/wh üst toolbar’da.
-    - OCR metni Gemini TTS seslendirme: btn-narrate-ocr-speech + workspace-shell data-narrate-speech-url.
-    - #ocr-status / #ai-status: yükleme animasyonu (spinner); TTS ses bitince OCR durum satırı JS ile gizlenir.
-    - AI Sohbet: sağ üst; .ai-chat-window max-height site.css (geniş). OCR textarea rows + .workspace-ocr-text min-height daha kompakt.
+    - OCR metni Gemini TTS seslendirme: yalnızca chat balonundaki "Seslendir" operasyonu ile ses çıktı balonu üretir.
+    - #ocr-status: OCR/kaydetme/TTS istekleri için yükleme animasyonu (spinner).
+    - AI Sohbet: sağ üst; chat içi operasyon kısayolları OCR/görsel çıktısını doğrudan AI işlemine bağlar.
+    - Harici AI işlem ve TTS menüleri kaldırıldı; kullanıcı aksiyonları chat balonu içindeki butonlardan yürür.
+    - Workspace geniş düzen: container-fluid + geniş sağ panel; OCR işlem paneli korunur.
     - Daha gelişmiş PDF viewer (thumbnail, rotate) eklenebilir.
     - Annotation araçları ve metin overlay future sprint.
     - AI panelinde yeni model seçenekleri ve karşılaştırma görünümü eklenebilir.
@@ -25,20 +27,20 @@
 <div class="app-page-header py-3 border-bottom border-light-subtle mb-3">
     <div class="container d-flex flex-wrap justify-content-between align-items-center gap-2">
         <div>
-            <h1 class="h4 fw-bold text-app-primary mb-1">Belge Calisma Alani</h1>
+            <h1 class="h4 fw-bold text-app-primary mb-1">Document Workspace</h1>
             <p class="text-muted small mb-0">@Model.Title · @Model.FileName · @FileSizeFormatter.Format(Model.SizeBytes)</p>
         </div>
         <div class="d-flex gap-2">
-            <a class="btn btn-outline-secondary btn-sm" asp-action="Index">← Belgeler</a>
+            <a class="btn btn-outline-secondary btn-sm" asp-action="Index">← Documents</a>
             <partial name="_StatusBadge" model="Model.Status" />
         </div>
     </div>
 </div>
 
 @* [TR] Çalışma alanı gövdesi: workspace-shell tek kart içinde üst toolbar (ipucu + canlı bölge metrikleri) + iki kolon; sohbet sağ üstte. *@
-<div class="container pb-4">
+<div class="container-fluid workspace-page-container pb-4">
     @Html.AntiForgeryToken()
-    @* data-narrate-speech-url: OCR textarea içeriği JSON { text } ile NarrateOcrSpeech’e gider → ses (MIME dinamik). *@
+    @* data-narrate-speech-url: OCR textarea içeriği JSON { documentId, text } ile NarrateOcrSpeech’e gider → ses (MIME dinamik). *@
     <div class="workspace-shell card border-0 shadow-sm"
          data-document-id="@Model.Id"
          data-pdf-url="@Model.PdfEndpointUrl"
@@ -47,6 +49,7 @@
          data-save-ocr-url="@Model.SaveOcrEndpointUrl"
          data-narrate-speech-url="@Model.NarrateSpeechEndpointUrl"
          data-ai-process-url="@(Url.Action("Process", "Ai") ?? "")"
+         data-chat-save-url="@(Url.Action("Save", "Chat") ?? "")"
          data-ocr-result-id="@(Model.LastOcrResultId?.ToString() ?? "")"
          data-default-ai-model="@Model.DefaultAiModel"
          data-default-style="@Model.DefaultTranslationStyle"
@@ -54,7 +57,7 @@
          data-zoom="@Model.ZoomPercent">
         <div class="workspace-toolbar border-bottom px-3 py-2 d-flex flex-wrap gap-2 align-items-center">
             <div class="btn-group btn-group-sm" role="group" aria-label="Sayfa gezinme">
-                <button type="button" class="btn btn-outline-secondary" id="btn-prev-page">Önceki</button>
+                <button type="button" class="btn btn-outline-secondary" id="btn-prev-page">Previous</button>
                 <button type="button" class="btn btn-outline-secondary" id="btn-next-page">Sonraki</button>
             </div>
             <span class="small text-muted">Sayfa</span>
@@ -63,10 +66,10 @@
 
             <div class="vr mx-1"></div>
 
-            <div class="btn-group btn-group-sm" role="group" aria-label="Yakınlaştırma">
+            <div class="btn-group btn-group-sm" role="group" aria-label="Zoom">
                 <button type="button" class="btn btn-outline-secondary" id="btn-zoom-out">-</button>
                 <button type="button" class="btn btn-outline-secondary" id="btn-zoom-in">+</button>
-                <button type="button" class="btn btn-outline-secondary" id="btn-fit-width">Genişliğe sığdır</button>
+                <button type="button" class="btn btn-outline-secondary" id="btn-fit-width">Fit width</button>
             </div>
             <span class="small text-muted" id="label-zoom">@Model.ZoomPercent%</span>
 
@@ -76,7 +79,7 @@
                Eski "Bölge Seçimi Başlat / Onayla / İptal" düğmeleri kaldırıldı; bunun yerine
                kısa bir kullanım ipucu ve seçimi temizlemek için tek bir buton bırakıldı. *@
             <span class="small text-muted flex-shrink-0">
-                <strong>İpucu:</strong> PDF üzerinde sürükleyerek bölge seç.
+                <strong>Tip:</strong> Drag on the PDF to select a region.
             </span>
             @* [TR] Seçili dikdörtgen — region-page … region-height (pdf-workspace.mjs setRegionInfo). Eski sağ panel dl kaldırıldı. *@
             <span id="region-toolbar-metrics-wrap" class="small text-muted workspace-toolbar-region-metrics flex-grow-1" style="min-width: 0;">
@@ -86,7 +89,7 @@
                 · w <strong id="region-width">@Model.SelectedRegion.Width.ToString("F1", System.Globalization.CultureInfo.InvariantCulture)</strong>
                 · h <strong id="region-height">@Model.SelectedRegion.Height.ToString("F1", System.Globalization.CultureInfo.InvariantCulture)</strong>
             </span>
-            <button type="button" class="btn btn-sm btn-outline-danger ms-auto flex-shrink-0" id="btn-cancel-selection" disabled>Seçimi Temizle</button>
+            <button type="button" class="btn btn-sm btn-outline-danger ms-auto flex-shrink-0" id="btn-cancel-selection" disabled>Clear Selection</button>
         </div>
 
         @*
@@ -117,7 +120,7 @@
                     <button type="button" class="btn btn-sm btn-outline-primary ms-2" id="btn-open-native-preview">Sayfa ici native onizleme</button>
                 </div>
                 <div id="workspace-viewer-empty" class="alert alert-warning mt-3 d-none">
-                    PDF görüntülenemedi. Dosya yolunu ve yüklemeyi kontrol edin.
+                    The PDF could not be displayed. Check the file path and upload.
                 </div>
                 <div id="native-pdf-preview" class="d-none mt-3">
                     <iframe id="native-pdf-frame"
@@ -136,7 +139,7 @@
                 @* [TR] AI Sohbet: bölge dl’sinin yerinde; yükseklik site.css ile sınırlı (iç scroll). *@
                 <div class="ai-chat-section ai-chat-section--side-panel card border-0 shadow-sm w-100 mb-3">
                     <div class="ai-chat-header d-flex justify-content-between align-items-center px-3 py-2 border-bottom">
-                        <h2 class="h6 fw-bold mb-0">AI Sohbet</h2>
+                        <h2 class="h6 fw-bold mb-0">AI Chat</h2>
                         <div class="d-flex gap-2 align-items-center">
                             <span class="small text-muted" id="ai-chat-count">0 mesaj</span>
                             <button type="button" class="btn btn-sm btn-outline-secondary" id="btn-clear-chat" title="Sohbeti temizle">Temizle</button>
@@ -144,7 +147,7 @@
                     </div>
                     <div class="ai-chat-window" id="ai-chat-window" aria-live="polite">
                         <div class="ai-chat-empty text-center text-muted small p-4" id="ai-chat-empty">
-                            Henüz mesaj yok. Bir bölge seçip "AI ile İşle" tıklayın — gönderdiğiniz içerik ve AI yanıtı burada görünecek.
+                            No messages yet. Extract text or select an image to show operation buttons here.
                         </div>
                     </div>
                 </div>
@@ -159,16 +162,16 @@
                     [TR] OCR Motoru seçimi: kullanıcı her istek için Tesseract veya
                     PaddleOCR kullanmayı seçebilir. Varsayılan appsettings → Ocr:Provider'dır.
                 *@
-                <div class="mb-2">
+                <div class="ocr-tools-compact mb-2">
                     <label class="form-label small mb-1" for="ocr-engine">OCR Motoru</label>
                     <select id="ocr-engine" class="form-select form-select-sm">
-                        <option value="Tesseract">Tesseract (Hızlı, kurulumu kolay)</option>
-                        <option value="Paddle">PaddleOCR (Daha doğru, çok dilli)</option>
+                        <option value="Tesseract">Tesseract (Fast, easy setup)</option>
+                        <option value="Paddle">PaddleOCR (More accurate, multilingual)</option>
                     </select>
                 </div>
                 <div class="d-grid gap-2 mb-2">
-                    <button type="button" class="btn btn-accent" id="btn-extract-text" disabled>Metni Çıkar</button>
-                    <button type="button" class="btn btn-outline-primary" id="btn-select-image" disabled>Görsel Seç</button>
+                    <button type="button" class="btn btn-accent" id="btn-extract-text" disabled>Extract Text</button>
+                    <button type="button" class="btn btn-outline-primary" id="btn-select-image" disabled>Select Image</button>
                 </div>
                 @* [TR] OCR işlem satırı: pdf-workspace.mjs setOcrStatus(..., { loading: true }) ile “Metni Çıkar” / TTS / kayıt sırasında spinner + metin.
                       Seslendirme sonrası ses bitince clearOcrStatus() bu satırı gizler (yazı kalıntısı kalmaz). *@
@@ -178,117 +181,49 @@
                        Görsel varken AI isteğine multimodal olarak eklenir. *@
                 <div id="captured-image-panel" class="mb-3 d-none">
                     <div class="d-flex justify-content-between align-items-center mb-1">
-                        <label class="form-label small fw-medium mb-0">Yakalanan Görsel</label>
-                        <button type="button" class="btn btn-link btn-sm p-0 text-danger" id="btn-clear-captured-image">Kaldır</button>
+                        <label class="form-label small fw-medium mb-0">Captured Image</label>
+                        <button type="button" class="btn btn-link btn-sm p-0 text-danger" id="btn-clear-captured-image">Remove</button>
                     </div>
-                    <img id="captured-image-preview" alt="Yakalanan bölge" class="img-fluid rounded border" />
+                    <img id="captured-image-preview" alt="Captured region" class="img-fluid rounded border" />
                     <div class="small text-muted mt-1">
-                        AI işlemi sırasında bu görsel prompt ile birlikte modele gönderilecek.
+                        This image will be sent to the model with the prompt during AI processing.
                     </div>
                 </div>
 
                 <label for="ocr-text-placeholder" class="form-label small fw-medium">OCR Metni (duzenlenebilir)</label>
                 <textarea id="ocr-text-placeholder"
                           class="form-control workspace-ocr-text"
-                          rows="6"
-                          placeholder="OCR çıktısı bir sonraki adımda bu alana gelecektir. Şimdilik manuel düzenlenebilir placeholder."
+                          rows="3"
+                          placeholder="OCR output will appear here in the next step. You can edit it manually."
                 >@Model.OcrTextPlaceholder</textarea>
-                @* [TR] Seslendir: Sunucuya OCR kutusunun metni gider — Gemini TTS ses döner — tarayıcı oynatır (Paddle hatasından bağımsız). *@
-                <button type="button" class="btn btn-outline-secondary btn-sm mt-2 w-100" id="btn-narrate-ocr-speech">
-                    OCR Metnini Seslendir (Gemini TTS)
-                </button>
                 <button type="button" class="btn btn-outline-secondary btn-sm mt-2 w-100" id="btn-save-ocr-text" disabled>
-                    OCR Metnini Kaydet
+                    Save OCR Text
                 </button>
 
-                <hr class="my-3" />
-                <h2 class="h6 fw-bold mb-2">AI İşlem Paneli</h2>
-                <div class="mb-2">
-                    <label class="form-label small mb-1" for="ai-operation">Islem</label>
-                    <select id="ai-operation" class="form-select form-select-sm">
+                @* [TR] Chat operasyonları için görünmez destek alanı:
+                       Harici AI işlem/TTS menüsü kaldırıldı; bu select'ler yalnızca pdf-workspace.mjs'in
+                       model listesini ve varsayılan stil bilgisini chat balonu içinde kullanması için tutulur. *@
+                <div class="d-none" aria-hidden="true">
+                    <select id="ai-operation">
                         <option value="Translate">Translate</option>
                         <option value="Summarize">Summarize</option>
                         <option value="Rewrite">Rewrite</option>
                         <option value="CreativeWrite">Creative Write</option>
                         <option value="Visualize">Visualize</option>
-                        @* [TR] Math: bar grafik / fonksiyon grafiği görseli (Gemini görsel) veya Wolfram Alpha ile çözüm+grafik *@
                         <option value="Math">Math / Grafik</option>
-                        @* [TR] Explanation: Seçili metni ve/veya "Görsel Seç" ile yakalanmış görseli
-                                analiz eder; içeriğin ne olduğunu, içinde ne barındırdığını ve mümkünse
-                                anlamlı çıkarımları kullanıcıya açıklar. Multimodal (Gemini) önerilir. *@
                         <option value="Explanation">Explanation</option>
                     </select>
-                </div>
-                <div class="mb-2">
-                    <label class="form-label small mb-1" for="ai-model">Model</label>
-                    @* [TR] Model listesi JS tarafından /Ai/ModelsForTask?task={işlem} endpoint'inden yüklenir.
-                       Seçilen işlem değiştiğinde sadece o işlemi destekleyen modeller gösterilir. *@
-                    <select id="ai-model" class="form-select form-select-sm"
-                            data-default-model="@Model.DefaultAiModel">
-                        <option value="">Yükleniyor…</option>
+                    <select id="ai-model" data-default-model="@Model.DefaultAiModel">
+                        <option value="">Loading...</option>
                     </select>
-                    <div class="small text-muted mt-1">
-                        Sadece seçilen işlemi destekleyen modeller listelenir.
-                        En çok kullandığınız model otomatik seçili gelir.
-                    </div>
-                </div>
-                @* Çeviri dili: sadece "Translate" işlemi seçildiğinde JS ile gösterilir *@
-                <div id="ai-translate-langs" class="mb-2" style="display:none;">
-                    <label class="form-label small mb-1" for="ai-target-language">Çeviri Dili</label>
-                    <select id="ai-target-language" class="form-select form-select-sm">
-                        <option value="Turkish">Türkçe</option>
-                        <option value="English" selected>İngilizce</option>
-                        <option value="German">Almanca</option>
-                        <option value="French">Fransızca</option>
-                        <option value="Spanish">İspanyolca</option>
-                        <option value="Italian">İtalyanca</option>
-                        <option value="Portuguese">Portekizce</option>
-                        <option value="Russian">Rusça</option>
-                        <option value="Arabic">Arapça</option>
-                        <option value="Chinese">Çince</option>
-                        <option value="Japanese">Japonca</option>
-                        <option value="Korean">Korece</option>
+                    <select id="ai-target-language">
+                        <option value="English" selected>English</option>
                     </select>
-                </div>
-                <div class="mb-2">
-                    <label class="form-label small mb-1" for="ai-style">Stil</label>
-                    <select id="ai-style" class="form-select form-select-sm">
-                        @if (Model.DefaultTranslationStyle == "Formal")
-                        {
-                            <option value="Formal" selected>Formal</option>
-                        }
-                        else
-                        {
-                            <option value="Formal">Formal</option>
-                        }
-                        @if (Model.DefaultTranslationStyle == "Academic")
-                        {
-                            <option value="Academic" selected>Academic</option>
-                        }
-                        else
-                        {
-                            <option value="Academic">Academic</option>
-                        }
-                        @if (Model.DefaultTranslationStyle == "Simplified")
-                        {
-                            <option value="Simplified" selected>Simplified</option>
-                        }
-                        else
-                        {
-                            <option value="Simplified">Simplified</option>
-                        }
+                    <select id="ai-style">
+                        <option value="Formal" selected='@(Model.DefaultTranslationStyle == "Formal")'>Formal</option>
+                        <option value="Academic" selected='@(Model.DefaultTranslationStyle == "Academic")'>Academic</option>
+                        <option value="Simplified" selected='@(Model.DefaultTranslationStyle == "Simplified")'>Simplified</option>
                     </select>
-                </div>
-                <div class="mb-2">
-                    <label class="form-label small mb-1" for="ai-instruction">Ozel Yonerge (Rewrite/Prompt)</label>
-                    <textarea id="ai-instruction" rows="3" class="form-control form-control-sm"
-                              placeholder="rewrite academically / simplify this text / make it more persuasive / make it shorter"></textarea>
-                </div>
-                <button type="button" class="btn btn-dark w-100 mb-2" id="btn-ai-process">AI ile Isle</button>
-                @* [TR] NLP/AI istek durumu: setAiStatus(..., { loading: true }) ile Groq/Gemini beklerken spinner; tamamlanınca başarı/hata metni. *@
-                <div id="ai-status" class="small mb-2 d-none"></div>
-                <div class="small mt-2">
-                    <a id="ai-result-link" class="link-primary d-none" href="#">Detayli sonuc sayfasini ac</a>
                 </div>
             </aside>
         </div>

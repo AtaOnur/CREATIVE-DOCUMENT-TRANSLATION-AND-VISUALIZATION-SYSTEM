@@ -38,13 +38,13 @@ public class DbSimpleAccountStore : ISimpleAccountStore
         email = email.Trim();
         if (string.IsNullOrWhiteSpace(email))
         {
-            errorMessage = "E-posta adresi gerekli.";
+            errorMessage = "Email address is required.";
             return false;
         }
 
         if (_db.AppUsers.Any(u => u.Email.ToLower() == email.ToLower()))
         {
-            errorMessage = "Bu e-posta ile zaten kayıt var.";
+            errorMessage = "An account already exists with this email address.";
             return false;
         }
 
@@ -89,27 +89,27 @@ public class DbSimpleAccountStore : ISimpleAccountStore
         errorMessage = null;
         if (string.IsNullOrWhiteSpace(token))
         {
-            errorMessage = "Geçersiz sıfırlama bağlantısı.";
+            errorMessage = "Invalid reset link.";
             return false;
         }
 
         if (!ResetTokens.TryGetValue(token, out var entry))
         {
-            errorMessage = "Bağlantı geçersiz veya süresi dolmuş.";
+            errorMessage = "The link is invalid or has expired.";
             return false;
         }
 
         if (entry.ExpiresUtc < DateTime.UtcNow)
         {
             ResetTokens.TryRemove(token, out _);
-            errorMessage = "Bağlantı süresi dolmuş. Yeni istek gönderin.";
+            errorMessage = "The link has expired. Please send a new request.";
             return false;
         }
 
         var u = _db.AppUsers.FirstOrDefault(x => x.Email.ToLower() == entry.Email.ToLower());
         if (u == null)
         {
-            errorMessage = "Kullanıcı bulunamadı.";
+            errorMessage = "User not found.";
             return false;
         }
 
@@ -136,27 +136,27 @@ public class DbSimpleAccountStore : ISimpleAccountStore
         errorMessage = null;
         if (string.IsNullOrWhiteSpace(token))
         {
-            errorMessage = "Geçersiz doğrulama bağlantısı.";
+            errorMessage = "Invalid verification link.";
             return false;
         }
 
         if (!VerifyTokens.TryGetValue(token, out var entry))
         {
-            errorMessage = "Bağlantı geçersiz veya süresi dolmuş.";
+            errorMessage = "The link is invalid or has expired.";
             return false;
         }
 
         if (entry.ExpiresUtc < DateTime.UtcNow)
         {
             VerifyTokens.TryRemove(token, out _);
-            errorMessage = "Doğrulama bağlantısının süresi dolmuş.";
+            errorMessage = "The verification link has expired.";
             return false;
         }
 
         var u = _db.AppUsers.FirstOrDefault(x => x.Email.ToLower() == entry.Email.ToLower());
         if (u == null)
         {
-            errorMessage = "Kullanıcı bulunamadı.";
+            errorMessage = "User not found.";
             return false;
         }
 
@@ -229,7 +229,7 @@ public class DbSimpleAccountStore : ISimpleAccountStore
         var u = _db.AppUsers.FirstOrDefault(x => x.Email.ToLower() == email.ToLower());
         if (u == null)
         {
-            errorMessage = "Kullanıcı bulunamadı.";
+            errorMessage = "User not found.";
             return false;
         }
 
@@ -245,7 +245,7 @@ public class DbSimpleAccountStore : ISimpleAccountStore
         var u = _db.AppUsers.FirstOrDefault(x => x.Email.ToLower() == email.ToLower());
         if (u == null)
         {
-            errorMessage = "Kullanıcı bulunamadı.";
+            errorMessage = "User not found.";
             return false;
         }
 

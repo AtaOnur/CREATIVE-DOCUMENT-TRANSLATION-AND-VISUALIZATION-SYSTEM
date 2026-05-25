@@ -18,7 +18,7 @@ public class StrongPasswordAttribute : ValidationAttribute
 {
     public StrongPasswordAttribute()
     {
-        ErrorMessage = "Parola en az bir büyük harf, bir rakam ve bir özel karakter (@!#$%^&*) içermelidir.";
+        ErrorMessage = "Password must contain at least one uppercase letter, one number, and one special character (@!#$%^&*).";
     }
 
     protected override ValidationResult? IsValid(object? value, ValidationContext validationContext)
@@ -28,13 +28,13 @@ public class StrongPasswordAttribute : ValidationAttribute
             return ValidationResult.Success; // Boşluk kontrolü [Required] ile yapılıyor.
 
         if (!Regex.IsMatch(password, @"[A-Z]"))
-            return new ValidationResult("Parola en az bir büyük harf içermelidir.");
+            return new ValidationResult("Password must contain at least one uppercase letter.");
 
         if (!Regex.IsMatch(password, @"[0-9]"))
-            return new ValidationResult("Parola en az bir rakam içermelidir.");
+            return new ValidationResult("Password must contain at least one number.");
 
         if (!Regex.IsMatch(password, @"[@!#$%^&*\(\)\-_=\+\[\]\{\};:'"",<>\.\?/\\|`~]"))
-            return new ValidationResult("Parola en az bir özel karakter içermelidir (@!#$%^&* vb.).");
+            return new ValidationResult("Password must contain at least one special character (@!#$%^&*, etc.).");
 
         return ValidationResult.Success;
     }

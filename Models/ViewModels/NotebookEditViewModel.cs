@@ -19,9 +19,11 @@ public class NotebookEditViewModel
     public Guid DocumentId { get; set; }
 
     [Required, StringLength(160)]
+    [Display(Name = "Note Title")]
     public string NoteTitle { get; set; } = string.Empty;
 
     [StringLength(1000)]
+    [Display(Name = "User Note")]
     public string UserNote { get; set; } = string.Empty;
 
     public string SourceDocument { get; set; } = string.Empty;

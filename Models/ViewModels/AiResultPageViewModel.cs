@@ -7,6 +7,7 @@ namespace pdf_bitirme.Models.ViewModels;
  *
  * MODIFICATION NOTES (TR)
  * - Yan yana sonuç karşılaştırma alanı eklenebilir.
+ * - TTS kayıtları için OutputAudioUrl/ContentType alanları notebook ve result ekranında gösterilir.
  * - Akademik citation mode çıktısı için ek alanlar eklenebilir.
  * - Genel image-to-text işlemi bu modülün kapsamında değildir.
  * - Zorluk: Kolay.
@@ -28,6 +29,8 @@ public class AiResultPageViewModel
     public string InputText { get; set; } = string.Empty;
     public string OutputText { get; set; } = string.Empty;
     public string OutputImageUrl { get; set; } = string.Empty;
+    public string OutputAudioUrl { get; set; } = string.Empty;
+    public string OutputAudioContentType { get; set; } = string.Empty;
     public bool IsSaved { get; set; }
     public DateTime UpdatedAtUtc { get; set; }
 }

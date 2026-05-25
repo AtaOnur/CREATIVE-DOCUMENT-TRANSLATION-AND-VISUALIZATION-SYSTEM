@@ -32,7 +32,7 @@ public class SmtpEmailSender : IEmailSender
         CancellationToken cancellationToken = default)
     {
         if (!_options.Enabled)
-            return (false, "SMTP gönderimi kapalı. Email:Smtp:Enabled=true yapın.");
+            return (false, "SMTP sending is disabled. Set Email:Smtp:Enabled=true.");
 
         if (string.IsNullOrWhiteSpace(_options.Host) ||
             string.IsNullOrWhiteSpace(_options.Username) ||
@@ -70,7 +70,7 @@ public class SmtpEmailSender : IEmailSender
         }
         catch (Exception ex)
         {
-            _logger.LogError(ex, "SMTP email gonderimi basarisiz oldu.");
+            _logger.LogError(ex, "SMTP email sending failed.");
             return (false, "Dogrulama e-postasi gonderilemedi.");
         }
     }

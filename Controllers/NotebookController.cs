@@ -67,11 +67,11 @@ public class NotebookController : Controller
         var result = await _documentService.UpdateNotebookEntryAsync(email, model, cancellationToken);
         if (!result.Ok)
         {
-            ModelState.AddModelError(string.Empty, result.ErrorMessage ?? "Notebook kaydi guncellenemedi.");
+            ModelState.AddModelError(string.Empty, result.ErrorMessage ?? "Notebook entry could not be updated.");
             return View(model);
         }
 
-        TempData["NotebookMessage"] = "Notebook kaydi guncellendi.";
+        TempData["NotebookMessage"] = "Notebook entry updated.";
         return RedirectToAction(nameof(Details), new { id = model.AiResultId });
     }
 
@@ -81,7 +81,7 @@ public class NotebookController : Controller
     {
         var email = User.Identity!.Name!;
         var result = await _documentService.DeleteNotebookEntryAsync(email, id, cancellationToken);
-        TempData["NotebookMessage"] = result.Ok ? "Notebook kaydi silindi." : (result.ErrorMessage ?? "Kayit silinemedi.");
+        TempData["NotebookMessage"] = result.Ok ? "Notebook entry deleted." : (result.ErrorMessage ?? "Entry could not be deleted.");
         return RedirectToAction(nameof(Index));
     }
 }

@@ -24,6 +24,7 @@ public class AppDbContext : DbContext
     public DbSet<ActivityEntry> ActivityEntries => Set<ActivityEntry>();
     public DbSet<OcrResult> OcrResults => Set<OcrResult>();
     public DbSet<AiResult> AiResults => Set<AiResult>();
+    public DbSet<ChatMessage> ChatMessages => Set<ChatMessage>();
     public DbSet<UserSettings> UserSettings => Set<UserSettings>();
     public DbSet<AppUser> AppUsers => Set<AppUser>();
 
@@ -39,8 +40,10 @@ public class AppDbContext : DbContext
             e.Property(x => x.ContentType).HasMaxLength(120);
             e.Property(x => x.StorageRelativePath).HasMaxLength(600);
             e.Property(x => x.Status).HasConversion<string>().HasMaxLength(32);
+            e.Property(x => x.BanReason).HasMaxLength(500);
             e.HasIndex(x => x.OwnerEmail);
             e.HasIndex(x => x.UpdatedAtUtc);
+            e.HasIndex(x => x.IsBanned);
         });
 
         modelBuilder.Entity<ActivityEntry>(e =>
@@ -79,6 +82,8 @@ public class AppDbContext : DbContext
             e.Property(x => x.InputText).HasMaxLength(12000);
             e.Property(x => x.OutputText).HasMaxLength(16000);
             e.Property(x => x.OutputImageUrl).HasMaxLength(1000);
+            e.Property(x => x.OutputAudioUrl).HasMaxLength(1000);
+            e.Property(x => x.OutputAudioContentType).HasMaxLength(120);
             e.HasIndex(x => x.DocumentId);
             e.HasIndex(x => x.UserEmail);
             e.HasIndex(x => x.CreatedAtUtc);
@@ -93,6 +98,24 @@ public class AppDbContext : DbContext
             e.Property(x => x.DefaultTranslationStyle).HasMaxLength(64);
             e.Property(x => x.ThemePreference).HasMaxLength(32);
             e.HasIndex(x => x.UserEmail).IsUnique();
+        });
+
+        modelBuilder.Entity<ChatMessage>(e =>
+        {
+            e.ToTable("chat_messages");
+            e.HasKey(x => x.Id);
+            e.Property(x => x.UserEmail).HasMaxLength(320);
+            e.Property(x => x.Role).HasMaxLength(24);
+            e.Property(x => x.MessageType).HasMaxLength(24);
+            e.Property(x => x.Text).HasMaxLength(12000);
+            e.Property(x => x.ImageUrl).HasMaxLength(1000);
+            e.Property(x => x.AudioUrl).HasMaxLength(1000);
+            e.Property(x => x.ResultUrl).HasMaxLength(1000);
+            e.Property(x => x.BanReason).HasMaxLength(500);
+            e.HasIndex(x => x.DocumentId);
+            e.HasIndex(x => x.UserEmail);
+            e.HasIndex(x => x.CreatedAtUtc);
+            e.HasIndex(x => x.IsBanned);
         });
 
         modelBuilder.Entity<AppUser>(e =>

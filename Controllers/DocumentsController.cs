@@ -121,7 +121,14 @@ public class DocumentsController : Controller
     public async Task<IActionResult> Upload(UploadViewModel model, CancellationToken cancellationToken)
     {
         if (model.File == null || model.File.Length == 0)
-            ModelState.AddModelError(nameof(model.File), "Lütfen bir PDF dosyası seçin.");
+            ModelState.AddModelError(nameof(model.File), "Please select a PDF file.");
+
+        if (!model.CopyrightResponsibilityAccepted)
+        {
+            ModelState.AddModelError(
+                nameof(model.CopyrightResponsibilityAccepted),
+                "You must accept responsibility for copyright, permissions, and any changes made to this document before uploading.");
+        }
 
         if (!ModelState.IsValid)
             return View(model);
@@ -130,11 +137,11 @@ public class DocumentsController : Controller
         var (ok, err) = await _documentService.UploadAsync(email, model.File!, model.Title, cancellationToken);
         if (!ok)
         {
-            ModelState.AddModelError(string.Empty, err ?? "Yükleme tamamlanamadı.");
+            ModelState.AddModelError(string.Empty, err ?? "Upload could not be completed.");
             return View(model);
         }
 
-        TempData["DocumentsMessage"] = "Belge başarıyla yüklendi.";
+        TempData["DocumentsMessage"] = "Document uploaded successfully.";
         return RedirectToAction(nameof(Index));
     }
 
@@ -230,15 +237,15 @@ public class DocumentsController : Controller
     public async Task<IActionResult> ExtractText([FromBody] OcrExtractRequestViewModel request, CancellationToken cancellationToken)
     {
         if (request.DocumentId == Guid.Empty)
-            return BadRequest(new { ok = false, message = "Belge kimliği zorunlu." });
+            return BadRequest(new { ok = false, message = "Document ID is required." });
 
         if (request.Region == null || request.Region.Width <= 0 || request.Region.Height <= 0)
-            return BadRequest(new { ok = false, message = "Geçerli bir bölge seçimi gerekli." });
+            return BadRequest(new { ok = false, message = "A valid region selection is required." });
 
         var email = User.Identity!.Name!;
         var workspace = await _documentService.GetWorkspaceAsync(email, request.DocumentId, cancellationToken);
         if (workspace == null)
-            return NotFound(new { ok = false, message = "Belge bulunamadı." });
+            return NotFound(new { ok = false, message = "Document not found." });
 
         // [TR] Kullanıcı UI'da motor seçtiyse onu kullan; aksi halde appsettings varsayılanı.
         var ocrService = ResolveOcrService(request.Engine);
@@ -261,7 +268,7 @@ public class DocumentsController : Controller
                 //      tabanlı yola düş (pdftoppm gereklidir).
                 var pdfPath = await _documentService.GetPdfPhysicalPathAsync(email, request.DocumentId, cancellationToken);
                 if (string.IsNullOrWhiteSpace(pdfPath))
-                    return BadRequest(new { ok = false, message = "OCR için PDF dosya yolu bulunamadı." });
+                    return BadRequest(new { ok = false, message = "PDF file path could not be found for OCR." });
 
                 text = await ocrService.ExtractFromPdfRegionAsync(
                     pdfPath, workspace.Title, request.Region, request.Language, cancellationToken);
@@ -272,7 +279,7 @@ public class DocumentsController : Controller
             // [TR] OCR motoru hatası (Python bulunamadı, model indirilemedi, pdftoppm hatası vb.)
             // Kullanıcıya anlaşılır mesaj döner; detay logda kalır.
             var shortMsg = ex.Message.Length > 300 ? ex.Message[..300] + "..." : ex.Message;
-            return BadRequest(new { ok = false, message = $"OCR hatası: {shortMsg}" });
+            return BadRequest(new { ok = false, message = $"OCR error: {shortMsg}" });
         }
 
         var save = await _documentService.SaveOcrResultAsync(email, request.DocumentId, request.Region, text, cancellationToken);
@@ -282,7 +289,7 @@ public class DocumentsController : Controller
         return Json(new
         {
             ok = true,
-            message = "OCR sonucu başarıyla üretildi.",
+            message = "OCR result generated successfully.",
             ocrResultId = save.OcrResultId,
             text = save.ExtractedText ?? string.Empty,
         });
@@ -301,19 +308,51 @@ public class DocumentsController : Controller
     {
         var plain = request?.Text?.Trim();
         if (string.IsNullOrWhiteSpace(plain))
-            return BadRequest(new { ok = false, message = "Seslendirme için OCR metni gerekli." });
+            return BadRequest(new { ok = false, message = "OCR text is required for narration." });
+        var documentId = request!.DocumentId;
+        if (documentId == Guid.Empty)
+            documentId = TryGetDocumentIdFromReferer() ?? Guid.Empty;
+        if (documentId == Guid.Empty)
+            return BadRequest(new { ok = false, message = "Document ID is required for audio recording." });
 
         try
         {
             var result = await _geminiTtsSpeech.SynthesizeAsync(plain, cancellationToken);
+            var save = await _documentService.SaveNarrationResultAsync(
+                User.Identity!.Name!,
+                documentId,
+                plain,
+                result.AudioBytes,
+                result.ContentType,
+                cancellationToken);
+            if (!save.Ok)
+                return BadRequest(new { ok = false, message = save.ErrorMessage ?? "Audio recording could not be added to the notebook." });
+
             Response.Headers.CacheControl = "no-store";
+            if (save.AiResultId.HasValue)
+                Response.Headers["X-Ai-Result-Id"] = save.AiResultId.Value.ToString();
+            if (!string.IsNullOrWhiteSpace(save.AudioUrl))
+                Response.Headers["X-Audio-Url"] = save.AudioUrl;
             return File(result.AudioBytes, result.ContentType);
         }
         catch (Exception ex)
         {
             var shortMsg = ex.Message.Length > 400 ? ex.Message[..400] + "..." : ex.Message;
-            return BadRequest(new { ok = false, message = $"Seslendirme hatası: {shortMsg}" });
+            return BadRequest(new { ok = false, message = $"Narration error: {shortMsg}" });
         }
+    }
+
+    /// <summary>
+    /// [TR] Eski cache'lenmiş istemci yalnızca { text } gönderirse Details/{id} referer'ından belge kimliğini çıkarır.
+    /// </summary>
+    private Guid? TryGetDocumentIdFromReferer()
+    {
+        var referer = Request.Headers.Referer.ToString();
+        if (string.IsNullOrWhiteSpace(referer) || !Uri.TryCreate(referer, UriKind.Absolute, out var uri))
+            return null;
+
+        var lastSegment = uri.Segments.LastOrDefault()?.Trim('/');
+        return Guid.TryParse(lastSegment, out var id) ? id : null;
     }
 
     /// <summary>Düzenlenmiş OCR metnini veritabanına kaydeder.</summary>
@@ -322,14 +361,14 @@ public class DocumentsController : Controller
     public async Task<IActionResult> SaveOcrText([FromBody] OcrSaveRequestViewModel request, CancellationToken cancellationToken)
     {
         if (request.OcrResultId == Guid.Empty)
-            return BadRequest(new { ok = false, message = "OCR sonuç kimliği zorunlu." });
+            return BadRequest(new { ok = false, message = "OCR result ID is required." });
 
         var email = User.Identity!.Name!;
         var result = await _documentService.UpdateOcrTextAsync(email, request.OcrResultId, request.Text, cancellationToken);
         if (!result.Ok)
             return BadRequest(new { ok = false, message = result.ErrorMessage ?? "OCR metni kaydedilemedi." });
 
-        return Json(new { ok = true, message = "OCR metni kaydedildi." });
+        return Json(new { ok = true, message = "OCR text saved." });
     }
 
     /// <summary>Belge ve dosyayı kaldırır.</summary>
@@ -340,9 +379,9 @@ public class DocumentsController : Controller
         var email = User.Identity!.Name!;
         var (ok, err) = await _documentService.DeleteAsync(email, id, cancellationToken);
         if (!ok)
-            TempData["DocumentsError"] = err ?? "Silinemedi.";
+            TempData["DocumentsError"] = err ?? "Could not be deleted.";
         else
-            TempData["DocumentsMessage"] = "Belge silindi.";
+            TempData["DocumentsMessage"] = "Document deleted.";
 
         return RedirectToAction(nameof(Index));
     }

@@ -1,6 +1,6 @@
 @model pdf_bitirme.Models.ViewModels.SettingsViewModel
 @{
-    ViewData["Title"] = "Ayarlar";
+    ViewData["Title"] = "Settings";
 }
 
 @*
@@ -16,8 +16,8 @@
 
 <div class="app-page-header py-3 border-bottom border-light-subtle mb-3">
     <div class="container">
-        <h1 class="h4 fw-bold text-app-primary mb-1">Ayarlar</h1>
-        <p class="text-muted small mb-0">Hesap ve AI tercih ayarlari</p>
+        <h1 class="h4 fw-bold text-app-primary mb-1">Settings</h1>
+        <p class="text-muted small mb-0">Account and AI preferences</p>
     </div>
 </div>
 
@@ -26,29 +26,29 @@
         <div class="col-lg-5">
             <div class="card border-0 shadow-sm settings-card h-100">
                 <div class="card-body">
-                    <h2 class="h6 fw-bold">Hesap Bilgisi</h2>
-                    <div class="small text-muted mb-1">Kullanici Adi</div>
+                    <h2 class="h6 fw-bold">Account Information</h2>
+                    <div class="small text-muted mb-1">Username</div>
                     <div class="mb-3">@Model.Username</div>
                     <div class="small text-muted mb-1">Email</div>
                     <div>@Model.Email</div>
                     <hr />
-                    <h3 class="h6 fw-bold">Guvenlik</h3>
-                    <p class="small text-muted mb-2">Basit hesap guvenligi bolumu (MVP).</p>
-                    <a class="btn btn-outline-secondary btn-sm" asp-controller="Account" asp-action="ForgotPassword">Parola Sifirla</a>
+                    <h3 class="h6 fw-bold">Security</h3>
+                    <p class="small text-muted mb-2">Basic account security section (MVP).</p>
+                    <a class="btn btn-outline-secondary btn-sm" asp-controller="Account" asp-action="ForgotPassword">Reset Password</a>
                 </div>
             </div>
         </div>
         <div class="col-lg-7">
             <div class="card border-0 shadow-sm settings-card">
                 <div class="card-body">
-                    <h2 class="h6 fw-bold mb-3">AI Tercihleri</h2>
+                    <h2 class="h6 fw-bold mb-3">AI Preferences</h2>
                     <form asp-action="Update" method="post" data-loading-form="true">
                         @Html.AntiForgeryToken()
                         <input type="hidden" asp-for="Username" />
                         <input type="hidden" asp-for="Email" />
 
                         <div class="mb-3">
-                            <label asp-for="DefaultAiModel" class="form-label">Varsayilan Model</label>
+                            <label asp-for="DefaultAiModel" class="form-label">Default Model</label>
                             <select asp-for="DefaultAiModel" class="form-select">
                                 @foreach (var m in Model.AvailableAiModels)
                                 {
@@ -66,7 +66,7 @@
                         </div>
 
                         <div class="mb-3">
-                            <label asp-for="DefaultTranslationStyle" class="form-label">Varsayilan Ceviri Stili</label>
+                            <label asp-for="DefaultTranslationStyle" class="form-label">Default Translation Style</label>
                             <select asp-for="DefaultTranslationStyle" class="form-select">
                                 <option value="Formal">Formal</option>
                                 <option value="Academic">Academic</option>
@@ -76,7 +76,7 @@
                         </div>
 
                         <div class="mb-3">
-                            <label asp-for="ThemePreference" class="form-label">Tema Tercihi (Placeholder)</label>
+                            <label asp-for="ThemePreference" class="form-label">Theme Preference (Placeholder)</label>
                             <select asp-for="ThemePreference" class="form-select">
                                 <option value="System">System</option>
                                 <option value="Light">Light</option>
@@ -85,7 +85,7 @@
                             <span asp-validation-for="ThemePreference" class="text-danger small"></span>
                         </div>
 
-                        <button class="btn btn-accent" type="submit">Ayarları Kaydet</button>
+                        <button class="btn btn-accent" type="submit">Save Settings</button>
                     </form>
                 </div>
             </div>

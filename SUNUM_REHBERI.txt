@@ -1,0 +1,944 @@
+================================================================================
+  BITIRME PROJESI — TUM DOSYALAR, ISLEVLER VE MODIFIKASYON SORULARI (COZUMLU)
+  Proje: Creative Document Translation and Visualization System (pdf_bitirme)
+  Stack: ASP.NET Core 8 MVC + SQLite + EF Core + PDF.js + OCR + Multi-AI + Gemini TTS
+================================================================================
+
+NOT: wwwroot/lib/ altindaki Bootstrap/jQuery gibi ucuncu taraf kutuphaneler ve web/
+Next.js iskeleti ayrica belirtilmistir. Asil sunum uygulamasi repo kokundeki MVC'dir.
+
+
+================================================================================
+0 — EZBER AKIS (TUM DOSYALARIN BAGLAMI)
+================================================================================
+
+View/JS → Controller → Service → DbContext / Dosya / Dis API
+
+Ana pipeline: PDF yukle → Workspace bolge sec → OCR → AI islem → Defter / Dashboard
+TTS: OCR textarea metni → NarrateOcrSpeech → Gemini TTS
+
+
+================================================================================
+1 — KOK YAPILANDIRMA DOSYALARI
+================================================================================
+
+--------------------------------------------------------------------------------
+Program.cs
+--------------------------------------------------------------------------------
+Ne ise yarar: Uygulama giris noktasi — DI, SQLite EnsureCreated, demo seed, cookie
+auth, OCR/AI/TTS servis kayitlari, anti-forgery.
+
+Onemli bloklar:
+  - EnsureColumn / ham SQL — sema genisletme (migration yerine MVP)
+  - SeedUsers, SeedDemoData — demo hesap + ornek belge
+  - OCR: Mock / Tesseract / Paddle secimi
+  - AI: Mock / Gemini / Multi
+  - AddAntiforgery(HeaderName = "RequestVerificationToken")
+  - IGeminiTtsSpeechService kaydi
+
+Soru: Varsayilan OCR'i Tesseract yapmak?
+Cozum: appsettings.json → "Ocr": { "Provider": "Tesseract" } + Windows'ta
+        tesseract.exe / pdftoppm.exe yollari
+
+Soru: Yeni AI saglayici eklemek?
+Cozum: XxxAiService : IAiService yaz → Program.cs AddHttpClient →
+        MultiProviderAiService switch'e dal ekle → appsettings Ai:Models[]
+
+Soru: JSON POST CSRF hatasi?
+Cozum: AddAntiforgery header adinin RequestVerificationToken oldugunu dogrula;
+        JS fetch'te ayni header gonderilsin
+
+Soru: Production DB yonetimi?
+Cozum: EnsureCreated() yerine EF migration + db.Database.Migrate()
+
+Soru: Demo seed kapatmak?
+Cozum: SeedUsers / SeedDemoData cagrilarini #if DEBUG ile sar veya config bayragi ekle
+
+
+--------------------------------------------------------------------------------
+appsettings.json
+--------------------------------------------------------------------------------
+Ne ise yarar: OCR yollari, AI model listesi, API anahtarlari, SMTP, connection string.
+
+Soru: API key'i repoda tutmamak?
+Cozum: User Secrets (dotnet user-secrets set "Ai:Gemini:ApiKey" "...") veya ortam degiskeni
+
+Soru: Sunumda key olmadan demo?
+Cozum: "Ai": { "Provider": "Mock" }, "Ocr": { "Provider": "Mock" }
+
+Soru: Yeni model eklemek?
+Cozum: Ai:Models[] icine { "Id", "Label", "Provider", "Tasks": [...] } satiri
+
+Soru: TTS modeli degistirmek?
+Cozum: Ai:Gemini:TtsModel, TtsVoiceName alanlarini guncelle
+
+
+--------------------------------------------------------------------------------
+pdf_bitirme.csproj / pdf_bitirme.sln
+--------------------------------------------------------------------------------
+Ne ise yarar: .NET 8 web projesi tanimi; web/ ve Tests/ build disi olabilir.
+
+Soru: Test projesini CI'da calistirmak?
+Cozum: dotnet test Tests/pdf_bitirme.Tests.csproj
+
+Soru: User Secrets ID?
+Cozum: csproj icindeki UserSecretsId ile dotnet user-secrets
+
+
+--------------------------------------------------------------------------------
+Properties/launchSettings.json
+--------------------------------------------------------------------------------
+Ne ise yarar: dotnet run portlari, launch profilleri.
+
+Soru: HTTPS portu degistirmek?
+Cozum: applicationUrl alanini duzenle
+
+
+--------------------------------------------------------------------------------
+README.md
+--------------------------------------------------------------------------------
+Ne ise yarar: Genel tanitim (bazi maddeler guncel degil — admin paneli artik var).
+
+
+================================================================================
+2 — Data/
+================================================================================
+
+--------------------------------------------------------------------------------
+AppDbContext.cs
+--------------------------------------------------------------------------------
+Ne ise yarar: EF Core ↔ SQLite; tablo adlari, indeksler, enum string donusumu.
+
+Tablolar: documents, ocr_results, ai_results, user_settings, activity_entries, app_users
+
+Soru: Yeni kolon eklemek?
+Cozum: Entity'ye property → OnModelCreating veya Program.cs EnsureColumn SQL
+
+Soru: OwnerEmail index neden?
+Cozum: ListAsync, dashboard hep email ile filtreler — performans
+
+Soru: Cascade delete?
+Cozum: Su an manuel; Document silinince DocumentService.DeleteAsync dosya +
+        iliskili kayitlari yonetir
+
+Soru: Migration'a gecmek?
+Cozum: dotnet ef migrations add Initial → Migrate()
+
+
+================================================================================
+3 — Models/Entities/ (veritabani satirlari)
+================================================================================
+
+--------------------------------------------------------------------------------
+Document.cs
+--------------------------------------------------------------------------------
+Alanlar: Id, OwnerEmail, Title, FileName, ContentType, SizeBytes, Status,
+         StorageRelativePath, tarihler.
+
+Soru: Sayfa sayisi alani?
+Cozum: public int PageCount { get; set; } ekle → UploadAsync'te PDF okuyup doldur
+        → DB semasi guncelle
+
+Soru: Kullanici iliskisi?
+Cozum: Su an OwnerEmail string; formal FK icin AppUser navigation property + migration
+
+Soru: Belge + dosya silme?
+Cozum: DocumentService.DeleteAsync — DB satiri + StorageRelativePath fiziksel dosya
+
+
+--------------------------------------------------------------------------------
+OcrResult.cs
+--------------------------------------------------------------------------------
+Alanlar: DocumentId, UserEmail, PageNumber, X/Y/Width/Height (normalize 0-1), ExtractedText.
+
+Soru: Confidence skoru?
+Cozum: public double? Confidence { get; set; } → OCR servisleri doldurur → workspace UI
+
+Soru: Coklu OCR gecmisi?
+Cozum: Zaten document basina birden fazla satir mumkun; UI'da liste ekle
+
+
+--------------------------------------------------------------------------------
+AiResult.cs
+--------------------------------------------------------------------------------
+Alanlar: OperationType, ModelName, diller, stil, Input/Output, OutputImageUrl,
+         NoteTitle, IsSaved.
+
+Soru: Token kullanimi loglamak?
+Cozum: TokensUsed int? ekle → servisler doldurur → ActivityEntry
+
+Soru: Visualize ciktisi nerede?
+Cozum: OutputImageUrl (Stability/Gemini image); metin islemlerinde OutputText
+
+
+--------------------------------------------------------------------------------
+AppUser.cs
+--------------------------------------------------------------------------------
+Alanlar: Email, Password (demo duz metin), Role, IsActive, IsEmailVerified.
+
+Soru: Parola hash?
+Cozum: DbSimpleAccountStore.ValidateCredentials icinde PasswordHasher<AppUser> kullan
+
+Soru: Moderator rolu?
+Cozum: Role alanina "Moderator" → [Authorize(Roles = "Admin,Moderator")]
+
+
+--------------------------------------------------------------------------------
+UserSettings.cs
+--------------------------------------------------------------------------------
+Alanlar: DefaultAiModel, DefaultTranslationStyle, ThemePreference.
+
+Soru: Varsayilan OCR motoru?
+Cozum: DefaultOcrEngine string ekle → workspace acilisinda dropdown'u doldur
+
+
+--------------------------------------------------------------------------------
+ActivityEntry.cs
+--------------------------------------------------------------------------------
+Alanlar: UserEmail, Message, CreatedAtUtc — pano/audit benzeri log.
+
+Soru: Admin log filtresi?
+Cozum: AdminService.GetLogsAsync zaten ActivityEntry sorgular
+
+
+================================================================================
+4 — Models/ (form modelleri)
+================================================================================
+
+--------------------------------------------------------------------------------
+DocumentStatus.cs (enum)
+--------------------------------------------------------------------------------
+UPLOADED, PROCESSING, OCR_READY, AI_READY, COMPLETED, FAILED
+
+Soru: ARCHIVED eklemek?
+Cozum: Enum'a ekle → _StatusBadge.cshtml Turkce etiket → filtre dropdown →
+        DocumentService gecisleri
+
+
+--------------------------------------------------------------------------------
+LoginViewModel.cs / RegisterViewModel.cs / ForgotPasswordViewModel.cs / ResetPasswordViewModel.cs
+--------------------------------------------------------------------------------
+Ne ise yarar: Hesap formlari + Data Annotations validasyonu.
+
+Soru: Ad Soyad alani?
+Cozum: ViewModel + Register.cshtml input + AppUser entity + TryRegister imzasi
+
+Soru: Validasyon hatasi gosterimi?
+Cozum: ModelState.IsValid false → view + @Html.ValidationMessageFor
+
+Soru: Parola tekrari?
+Cozum: [Compare(nameof(Password))] attribute
+
+
+--------------------------------------------------------------------------------
+ErrorViewModel.cs
+--------------------------------------------------------------------------------
+Ne ise yarar: Hata sayfasi RequestId.
+
+Soru: Production'da detay gizleme?
+Cozum: UseExceptionHandler + Error.cshtml sadece RequestId gostersin
+
+
+================================================================================
+5 — Models/ViewModels/ (ekran/API modelleri)
+================================================================================
+
+DocumentWorkspaceViewModel.cs
+  Ne ise yarar: Workspace: PDF URL'leri, endpoint'ler, son OCR, AI modelleri
+  Modifikasyon: Export butonu → ExportEndpointUrl + controller action + data-export-url
+
+RegionSelectionViewModel.cs
+  Ne ise yarar: Sayfa + normalize dikdortgen (x,y,w,h)
+  Modifikasyon: Tam sayfa OCR → w=1, h=1 gonder
+
+OcrExtractRequestViewModel.cs
+  Ne ise yarar: OCR istegi: DocumentId, Region, Engine, Language, ImageBase64
+  Modifikasyon: Engine: "Paddle" body'ye ekle → ResolveOcrService
+
+OcrSaveRequestViewModel.cs
+  Ne ise yarar: Duzenlenmis OCR metni kaydi
+  Modifikasyon: Otomatik kayit → debounce + SaveOcrText periyodik fetch
+
+AiProcessRequestViewModel.cs
+  Ne ise yarar: AI: OperationType, ModelName, diller, metin, InputImageBase64
+  Modifikasyon: temperature ekle → servis CallAsync parametresi
+
+NarrateFromOcrRequestViewModel.cs
+  Ne ise yarar: TTS: { text } JSON govdesi
+  Modifikasyon: Ses hizi → property + GeminiTtsSpeechService
+
+UploadViewModel.cs
+  Ne ise yarar: PDF yukleme formu
+  Modifikasyon: Coklu dosya → IFormFile[] Files + dongu controller'da
+
+DocumentUploadConstants.cs
+  Ne ise yarar: Max boyut sabiti
+  Modifikasyon: 10 MB → 25 MB: sabiti veya appsettings'ten oku
+
+DocumentsIndexViewModel.cs / DocumentRowViewModel.cs
+  Ne ise yarar: Belge listesi tablo/kart
+  Modifikasyon: Sayfalama → Skip/Take + view pager
+
+DocumentDetailsViewModel.cs
+  Ne ise yarar: Belge meta ozeti (workspace degil)
+  Modifikasyon: Thumbnail URL alani ekle
+
+DashboardViewModel.cs
+  Ne ise yarar: Pano istatistikleri
+  Modifikasyon: Grafik → Chart.js + JSON endpoint
+
+AiResultPageViewModel.cs
+  Ne ise yarar: AI sonuc sayfasi
+  Modifikasyon: Sohbet gecmisi zaten ai-result-chat-history.mjs
+
+NotebookIndexViewModel.cs / NotebookEditViewModel.cs
+  Ne ise yarar: Defter listesi/duzenleme
+  Modifikasyon: Klasor/etiket → yeni alanlar + filtre
+
+SettingsViewModel.cs
+  Ne ise yarar: Kullanici tercihleri
+  Modifikasyon: Tema dark mode → CSS class + localStorage
+
+AdminDashboardViewModel.cs / AdminUsersViewModels.cs / AdminDocumentsViewModel.cs / AdminLogsViewModel.cs
+  Ne ise yarar: Admin panel ekranlari
+  Modifikasyon: CSV export → yeni action + stream response
+
+
+================================================================================
+6 — Helpers/
+================================================================================
+
+--------------------------------------------------------------------------------
+StrongPasswordAttribute.cs
+--------------------------------------------------------------------------------
+Ne ise yarar: Buyuk harf, rakam, ozel karakter kontrolu.
+
+Soru: Kucuk harf zorunlulugu?
+Cozum: Regex.IsMatch(password, @"[a-z]") satiri ekle
+
+Soru: Istemci tarafi?
+Cozum: jQuery Unobtrusive veya custom JS — sunucu attribute kalir
+
+
+--------------------------------------------------------------------------------
+FileSizeFormatter.cs
+--------------------------------------------------------------------------------
+Ne ise yarar: Bayt → KB/MB gosterimi.
+
+Soru: GB destegi?
+Cozum: if (bytes >= 1_073_741_824) dali ekle
+
+
+================================================================================
+7 — Controllers/
+================================================================================
+
+--------------------------------------------------------------------------------
+HomeController.cs
+--------------------------------------------------------------------------------
+Index      → Landing
+Privacy    → Statik sayfa
+Faq        → SSS
+Error      → Hata
+
+Soru: Yeni statik sayfa?
+Cozum: Action + Views/Home/X.cshtml + navbar link
+
+
+--------------------------------------------------------------------------------
+AccountController.cs
+--------------------------------------------------------------------------------
+Login GET/POST           → Cookie oturumu (SignInAsync, Role claim)
+Register                 → TryRegister + dogrulama maili
+ForgotPassword/ResetPassword → Token ile sifirlama
+VerifyEmail              → E-posta dogrulama
+Logout                   → Cikis
+AccessDenied             → Yetkisiz
+
+Soru: Identity'ye gecmek?
+Cozum: AddIdentity<AppUser>() → SignInManager / UserManager; ISimpleAccountStore kaldirilir
+
+Soru: Giris e-posta dogrulama zorunlu?
+Cozum: Login POST'ta IsEmailVerified kontrolu
+
+Soru: Rol nereden gelir?
+Cozum: ClaimTypes.Role ← _accounts.GetRole(email)
+
+
+--------------------------------------------------------------------------------
+DashboardController.cs
+--------------------------------------------------------------------------------
+Index → GetDashboardAsync — belge sayilari, son aktiviteler
+
+Soru: Widget eklemek?
+Cozum: DashboardViewModel genislet + view kartlari
+
+
+--------------------------------------------------------------------------------
+DocumentsController.cs (CEKIRDEK)
+--------------------------------------------------------------------------------
+Index            → Filtreli belge listesi
+Upload GET/POST  → PDF yukleme (magic header, boyut)
+Details          → Workspace view
+Pdf              → PDF stream (sadece sahibi)
+PagePreview      → pdftoppm ile sayfa PNG
+ExtractText      → POST JSON — OCR + DB
+SaveOcrText      → OCR metni guncelle
+NarrateOcrSpeech → OCR metni → Gemini TTS → ses
+Delete           → Belge sil
+
+Ozel: ResolveOcrService(engine) — istekte Paddle/Tesseract secimi
+
+Soru: Baska kullanicinin belgesine erisim?
+Cozum: GetWorkspaceAsync(email, id) — sorguda OwnerEmail == userEmail
+
+Soru: DOCX kabul?
+Cozum: UploadAsync validasyon genislet — ama OCR pipeline PDF'e bagli
+
+Soru: OCR motoru istemciden?
+Cozum: ExtractText body'sine engine → ResolveOcrService
+
+Soru: TTS hata mesaji?
+Cozum: catch → BadRequest(new { ok=false, message })
+
+Soru: PRG pattern upload?
+Cozum: Zaten var: POST → Redirect + TempData
+
+
+--------------------------------------------------------------------------------
+AiController.cs
+--------------------------------------------------------------------------------
+ModelsForTask → Task'a uygun modeller JSON
+Process       → AI calistir + kaydet → JSON
+Result        → Sonuc Razor sayfasi
+Save          → Deftere kaydet isareti
+Regenerate    → Ayni parametrelerle yeniden uret
+
+SupportedOps: Translate, Summarize, Rewrite, CreativeWrite, Visualize, Explanation, Math
+
+Soru: Yeni task Paraphrase?
+Cozum: SupportedOps'a ekle → appsettings Tasks → UI dropdown → servis prompt sablonu
+
+Soru: JSON POST CSRF?
+Cozum: JS: headers: { RequestVerificationToken: token }
+
+Soru: Model listesi kaynagi?
+Cozum: appsettings → Ai:Models → AiOptions.Models.Where(m => m.Tasks.Contains(task))
+
+
+--------------------------------------------------------------------------------
+NotebookController.cs
+--------------------------------------------------------------------------------
+Index              → Kayitli AI sonuclari (filtre)
+Details, Edit, Delete → Not CRUD
+
+Soru: Otomatik deftere kayit?
+Cozum: AiController.Process sonunda MarkAiResultSavedAsync cagir
+
+
+--------------------------------------------------------------------------------
+SettingsController.cs
+--------------------------------------------------------------------------------
+Index / Update → Varsayilan model, ceviri stili, tema
+
+
+--------------------------------------------------------------------------------
+AdminController.cs ([Authorize(Roles = "Admin")])
+--------------------------------------------------------------------------------
+Index                              → Admin pano
+Users, UserDetails, SetUserStatus, DeleteUser → Kullanici yonetimi
+Documents, DocumentDetails, DeleteDocument    → Belge yonetimi
+Logs                               → Aktivite filtreleme
+
+Soru: Admin olmayan /Admin denerse?
+Cozum: Cookie AccessDeniedPath → /Account/AccessDenied
+
+Soru: Moderator rolu?
+Cozum: AppUser.Role + action bazli [Authorize(Roles = "...")]
+
+
+================================================================================
+8 — Services/ — Arayuzler
+================================================================================
+
+IDocumentService.cs
+  Tum belge/OCR/AI/defter/ayar islemleri sozlesmesi
+
+IOcrService.cs
+  ExtractFromPdfRegionAsync(...)
+  ExtractFromImageBytesAsync(...)
+
+IAiService.cs
+  ProcessAsync(documentTitle, AiProcessRequestViewModel, ct) → AiServiceResult
+
+ISimpleAccountStore.cs
+  Kayit, giris, token, rol, admin kullanici yonetimi
+
+IAdminService.cs
+  Admin panel verileri
+
+IEmailSender.cs
+  Dogrulama e-postasi
+
+IGeminiTtsSpeechService.cs
+  SynthesizeAsync(text) → GeminiSpeechSynthesisResult (AudioBytes + ContentType)
+
+
+================================================================================
+9 — Services/ — Implementasyonlar
+================================================================================
+
+--------------------------------------------------------------------------------
+DocumentService.cs (ONEMLI)
+--------------------------------------------------------------------------------
+GetDashboardAsync              → Pano
+ListAsync                      → Belge listesi + filtre
+GetWorkspaceAsync              → Workspace modeli
+OpenPdfAsync / GetPdfPhysicalPathAsync → Dosya erisimi
+UploadAsync                    → PDF magic header, diske yaz, DB
+SaveOcrResultAsync             → OCR kaydi + durum guncelle
+UpdateOcrTextAsync             → Metin duzenleme
+SaveAiResultAsync              → AI ciktisi
+GetAiResultPageAsync           → Sonuc sayfasi
+MarkAiResultSavedAsync         → Deftere isaretle
+GetNotebookAsync / CRUD        → Defter
+GetSettingsAsync / UpdateSettingsAsync → Ayarlar
+DeleteAsync                    → Belge + dosya sil
+
+Soru: Max dosya boyutu?
+Cozum: DocumentUploadConstants.MaxBytes veya config
+
+Soru: Bulut depolama?
+Cozum: UploadAsync icinde S3/Blob upload; StorageRelativePath URL/key tutar
+
+Soru: Async OCR kuyrugu?
+Cozum: Upload sonrasi Hangfire job; controller sadece kuyruga atar
+
+
+--------------------------------------------------------------------------------
+OCR Servisleri
+--------------------------------------------------------------------------------
+MockOcrService           → Sahte metin + delay (demo)
+TesseractCliOcrService   → pdftoppm → PNG → kirp → tesseract.exe
+PaddleOcrService         → Python Scripts/paddle_ocr.py
+
+Soru: Mock → gercek gecis?
+Cozum: Ocr:Provider = Tesseract/Paddle
+
+Soru: Tarayici PNG yolu?
+Cozum: ImageBase64 gonder — Poppler gerekmez, sadece OCR motoru
+
+Soru: Yeni motor EasyOCR?
+Cozum: IOcrService implement et → Program.cs kayit → ResolveOcrService
+
+
+--------------------------------------------------------------------------------
+AI Servisleri
+--------------------------------------------------------------------------------
+MockAiService            → API key olmadan demo
+GeminiAiService          → Metin + multimodal gorsel + Imagen
+GroqAiService            → Hizli Llama/Qwen
+HuggingFaceAiService     → Ucretsiz modeller
+StabilityAiService       → Gorsel uretim (Visualize)
+WolframAlphaAiService    → Math
+MultiProviderAiService   → Model ID → provider yonlendirme
+
+
+--------------------------------------------------------------------------------
+AiServiceResult.cs
+--------------------------------------------------------------------------------
+OutputText, OutputImageUrl
+
+
+--------------------------------------------------------------------------------
+Ai/AiModelDefinition.cs + AiOptions
+--------------------------------------------------------------------------------
+AiModelDefinition: Id, Label, Provider, Tasks[]
+Alt options: Gemini, HuggingFace, Groq, Stability, WolframAlpha
+
+Soru: Yeni model sadece config?
+Cozum: appsettings Ai:Models[] — kod degismez (ayni provider ise)
+
+Soru: Iki modele paralel istek?
+Cozum: Task.WhenAll iki ProcessAsync
+
+
+--------------------------------------------------------------------------------
+GeminiTtsSpeechService.cs
+--------------------------------------------------------------------------------
+Gemini generateContent AUDIO modality → MP3/WAV bytes
+
+Soru: ApiKey yok?
+Cozum: Servis exception → controller JSON hata
+
+Soru: WAV vs MP3?
+Cozum: ContentType alanina bak; File(result.AudioBytes, result.ContentType)
+
+
+--------------------------------------------------------------------------------
+DbSimpleAccountStore.cs / SimpleAccountStore.cs
+--------------------------------------------------------------------------------
+SQLite kullanici deposu (in-memory eski versiyon kullanilmiyor olabilir)
+
+
+--------------------------------------------------------------------------------
+AdminService.cs
+--------------------------------------------------------------------------------
+Admin istatistik, kullanici/belge CRUD, log filtreleme
+
+
+--------------------------------------------------------------------------------
+SmtpEmailSender.cs + SmtpEmailOptions.cs
+--------------------------------------------------------------------------------
+Gmail SMTP dogrulama maili
+
+Soru: SMTP kapali demo?
+Cozum: Email:Smtp:Enabled = false — log'a token yaz (dev only)
+
+
+================================================================================
+10 — Views/ (Razor)
+================================================================================
+
+Shared/_Layout.cshtml              → Navbar, footer, scriptler
+Shared/_AppAlerts.cshtml           → TempData mesajlari
+Shared/_StatusBadge.cshtml         → Belge durumu rozeti
+Shared/_ValidationScriptsPartial.cshtml → jQuery validation
+Shared/Error.cshtml                → Hata sayfasi
+Home/Index.cshtml                  → Landing
+Home/Faq.cshtml, Privacy.cshtml    → Statik
+Account/*                          → Login, Register, Forgot/Reset
+Dashboard/Index.cshtml             → Pano
+Documents/Index.cshtml             → Liste
+Documents/Upload.cshtml            → Yukleme
+Documents/Details.cshtml (ONEMLI)  → Workspace — data-* URL'ler, modul script
+Ai/Result.cshtml                   → AI sonuc + sohbet
+Notebook/*                         → Defter CRUD
+Settings/Index.cshtml              → Ayarlar
+Admin/*                            → Admin paneli
+_ViewImports.cshtml                → Global using/tag helpers
+_ViewStart.cshtml                  → Default layout
+
+Modifikasyon ornekleri:
+  - Admin menusu: User.IsInRole("Admin")
+  - Yeni durum rozeti: _StatusBadge switch'e ekle
+  - Workspace yeni buton: data-* attribute + pdf-workspace.mjs handler
+
+
+================================================================================
+11 — wwwroot/ (proje JS/CSS)
+================================================================================
+
+--------------------------------------------------------------------------------
+js/pdf-workspace.mjs (ONEMLI — ~1200 satir)
+--------------------------------------------------------------------------------
+Ana fonksiyonlar/kavramlar:
+  - init() — PDF yukle, event'ler
+  - renderPage — PDF.js canvas
+  - Surukle-birak bolge secimi (normalize koordinat)
+  - captureSelectionAsImage() — PNG base64 (multimodal AI)
+  - loadModelsForTask — /Ai/ModelsForTask
+  - OCR/AI/TTS fetch — RequestVerificationToken header
+  - AI sohbet UI — appendUserMessage, replaceWithAiMessage
+  - btnNarrateOcrSpeech — TTS blob oynatma
+
+Soru: Overlay vs canvas piksel farki?
+Cozum: scaleX = canvas.width / offsetWidth ile duzelt — kodda var
+
+Soru: Tam sayfa OCR butonu?
+Cozum: Region w=1, h=1 gonder veya ayri handler
+
+Soru: Ses durdurma UI?
+Cozum: Audio ref tut; pause() butonu
+
+Soru: .mjs ne demek?
+Cozum: ES module — import kullanilabilir
+
+
+--------------------------------------------------------------------------------
+js/site.js
+--------------------------------------------------------------------------------
+Form submit'te "Isleniyor..." spinner — data-loading-form="true" formlar.
+
+Soru: Hangi formlar?
+Cozum: Upload, Login vb. data-loading-form attribute'lu
+
+
+--------------------------------------------------------------------------------
+js/ai-result-chat-history.mjs
+--------------------------------------------------------------------------------
+AI sonuc sayfasi sohbet gecmisi UI.
+
+
+--------------------------------------------------------------------------------
+css/site.css
+--------------------------------------------------------------------------------
+Workspace layout, chat, toolbar stilleri.
+
+
+--------------------------------------------------------------------------------
+wwwroot/lib/*
+--------------------------------------------------------------------------------
+Bootstrap 5, jQuery, PDF.js — ucuncu taraf; modifikasyon genelde gerekmez.
+
+
+================================================================================
+12 — Scripts/
+================================================================================
+
+paddle_ocr.py
+  PaddleOCR Python betigi — PaddleOcrService tarafindan cagrilir.
+
+Soru: Python yolu?
+Cozum: appsettings veya PATH; servis icinde python/py cagrisi
+
+Soru: Bagimlilik kurulumu?
+Cozum: pip install paddleocr paddlepaddle (Windows)
+
+
+================================================================================
+13 — Tests/
+================================================================================
+
+TestWebApplicationFactory.cs     → Entegrasyon test host
+TestAuthHandler.cs               → Test oturumu
+MockHttpMessageHandler.cs        → Sahte HTTP yanitlari
+HuggingFaceServiceBuilder.cs     → HF servis test kurulumu
+AiControllerHttpTests.cs         → ModelsForTask HTTP testi
+AiControllerIntegrationTests.cs  → AI controller entegrasyon
+HuggingFaceAiServiceTests.cs       → HF unit test
+HuggingFaceEdgeCaseTests.cs        → Edge case
+AiUserFlowTests.cs                 → Fonksiyonel akis
+PerformanceAndFailureTests.cs      → Performans/hata
+_TestSuiteOverview.cs              → Test ozeti
+
+Soru: Process neden test edilmiyor?
+Cozum: Anti-forgery gerektirir; factory'de token enjekte et veya integration test helper
+
+Soru: CI'da calistirma?
+Cozum: dotnet test — Mock AI/OCR ile
+
+
+================================================================================
+14 — web/ (ikincil — Next.js iskeleti)
+================================================================================
+
+Tez icin planlanan Next.js 14 + Prisma + SQL Server; kok MVC ile senkron degil.
+
+Katman          Klasor
+Sunum           app/, components/
+Uygulama        lib/application/ (placeholder)
+Kalicilik       lib/persistence/, prisma/
+Dis entegrasyon lib/external/, lib/ocr/ (mock)
+
+Sunumda tek cumle: "Gelecek mimari Next.js iskeleti web/ altinda; asil MVP kok MVC."
+
+
+================================================================================
+15 — 20 HIZLI MODIFIKASYON SENARYOSU (SORU + ADIM ADIM COZUM)
+================================================================================
+
+1. OCR confidence skoru
+   OcrResult.Confidence → servis doldurur → SaveOcrResultAsync → UI badge
+
+2. Max 10→25 MB
+   DocumentUploadConstants.MaxBytes = 25*1024*1024
+
+3. Tam sayfa OCR
+   JS: region { x:0,y:0,width:1,height:1 } + ExtractText
+
+4. AI gecmisi CSV
+   Yeni ExportController → AiResults sorgusu → text/csv File
+
+5. Parola bcrypt
+   PasswordHasher<AppUser> in DbSimpleAccountStore
+
+6. Task: Paraphrase
+   SupportedOps + appsettings Tasks + Groq prompt + UI option
+
+7. Varsayilan OCR motoru
+   UserSettings.DefaultOcrEngine + workspace dropdown default
+
+8. Belge sayfalama
+   ListAsync: page, pageSize → Skip/Take + pager partial
+
+9. TTS ses hizi
+   GeminiAiOptions.TtsSpeakingRate + API payload
+
+10. Upload sonrasi async OCR
+    Hangfire job ProcessOcrJob(documentId)
+
+11. OpenAI eklemek
+    OpenAiService : IAiService + MultiProvider "OpenAI" dali
+
+12. Belge etiketleri
+    Document.Tags JSON string + filtre
+
+13. 2FA
+    Identity + TOTP (ileri seviye)
+
+14. Rate limiting
+    ASP.NET AddRateLimiter on Ai/Process
+
+15. OCR on isleme
+    Tesseract oncesi grayscale/contrast — TesseractCliOcrService
+
+16. Notebook PDF export
+    QuestPDF veya iText — notebook entries → PDF
+
+17. Webhook AI sonucu
+    SaveAiResultAsync sonrasi HTTP POST
+
+18. Coklu bolge OCR
+    List<RegionSelectionViewModel> + dongu OCR
+
+19. Admin istatistik grafik
+    Chart.js + AdminService JSON endpoint
+
+20. Docker deploy
+    Dockerfile + volume Data/ + env API keys
+
+
+================================================================================
+16 — JURI ICIN EN KRITIK 5 DOSYA (EZBER)
+================================================================================
+
+1. Program.cs              — DI, OCR/AI secimi, seed, auth
+2. DocumentsController.cs  — workspace, OCR, TTS
+3. DocumentService.cs      — is mantigi merkezi
+4. Views/Documents/Details.cshtml — UI + data attribute'lar
+5. wwwroot/js/pdf-workspace.mjs — istemci davranisi
+
+
+================================================================================
+17 — DEMO HESAPLARI
+================================================================================
+
+E-posta                  Parola      Rol
+demo@university.edu      demo123     User
+admin@university.edu     admin123    Admin
+
+
+================================================================================
+18 — 60 SANIYEDE PROJE (EZBER)
+================================================================================
+
+Proje adi: Creative Document Translation and Visualization System
+Repo adi: pdf_bitirme
+
+Problem: PDF'teki belirli bir bolgeden metin cikarip AI ile cevirmek, ozetlemek,
+         yeniden yazmak veya gorsellestirmek.
+
+Cozum: PDF yukle → calisma alaninda bolge sec → OCR → metin uzerinde AI →
+       sonuclari deftere kaydet → (opsiyonel) OCR metnini seslendir.
+
+Teknik ozet: ASP.NET MVC + SQLite + EF Core + PDF.js + Tesseract/PaddleOCR
+             (Windows) + coklu AI saglayici (Gemini, Groq, HuggingFace,
+             Stability, Wolfram) + Gemini TTS.
+
+Kapsam disi (bilincli): Rastgele fotograftan OCR yok; sadece PDF ici secili bolge.
+
+
+================================================================================
+19 — MIMARI (TEMEL)
+================================================================================
+
+Tarayici (Razor + Bootstrap + pdf-workspace.mjs)
+        ↓ HTTP
+Controllers  →  ince; yonlendirme + JSON API
+        ↓
+Services     →  is mantigi (belge, OCR, AI, hesap, admin)
+        ↓
+Data         →  AppDbContext + SQLite (Data/app.db)
+        ↓
+Dosya sistemi → Data/uploads/{emailHash}/{guid}.pdf
+
+Bagimlilik enjeksiyonu Program.cs icinde: hangi OCR ve AI implementasyonunun
+calisacagi appsettings.json ile secilir.
+
+
+================================================================================
+20 — ANA IS AKISI (SUNUMUN KALBI)
+================================================================================
+
+Adim  Kim yapar                    Ne olur
+1     AccountController            Kayit, e-posta dogrulama, giris → cookie
+2     DocumentsController.Upload   PDF dogrulanir, diske yazilir, Document satiri
+3     DocumentsController.Details  Workspace acilir
+4     pdf-workspace.mjs            PDF.js ile sayfa, surukle-birak ile bolge
+5     ExtractText (POST JSON)      OCR motoru metin uretir → DB kaydi
+6     Kullanici                    OCR metnini duzenleyebilir, kaydedebilir
+7     AiController.Process         AI isler → AiResult kaydi
+8     NotebookController           Sonuc goruntuleme, deftere kayit
+Ops   NarrateOcrSpeech             OCR metni → Gemini TTS → ses dosyasi
+
+Belge durumlari: UPLOADED → PROCESSING → OCR_READY → AI_READY → COMPLETED / FAILED
+
+
+================================================================================
+21 — EZBER AKIS DIYAGRAMI
+================================================================================
+
+PDF → Document → Workspace (pdf-workspace.mjs)
+     → ExtractText (IOcrService) → OcrResult
+     → Ai/Process (IAiService) → AiResult
+     → Notebook / Dashboard
+
+
+================================================================================
+22 — MUHTEMEL JURI SORULARI + KISA CEVAPLAR
+================================================================================
+
+1. Neden MVC?
+   Katmanlar net, bitirme MVP'si icin yeterli ve savunulabilir.
+
+2. OCR neden bolge bazli?
+   Akademik PDF'lerde tam sayfa gurultu; kullanici ilgili paragrafi secer.
+
+3. Mock vs gercek OCR?
+   Ocr:Provider ile secilir; sunumda Mock, Windows'ta Tesseract/Paddle.
+
+4. AI nasil coklu saglayici?
+   MultiProviderAiService model ID → provider eslemesi (appsettings Ai:Models[]).
+
+5. Migration yok mu?
+   MVP'de EnsureCreated + manuel SQL; uretimde migration onerilir.
+
+6. Identity neden yok?
+   Zaman kisiti; arayuz ISimpleAccountStore ile degistirilebilir tasarlandi.
+
+7. Seslendirme OCR motoruna bagli mi?
+   Hayir; textarea'daki metin Gemini TTS ile okunur.
+
+8. Admin paneli var mi?
+   Evet — AdminController, rol tabanli [Authorize(Roles = "Admin")].
+
+
+================================================================================
+23 — SUNUM SIRASI ONERISI (10-15 DK)
+================================================================================
+
+1. Problem ve kapsam (1 dk)
+2. Mimari diyagram — Controller → Service → DB (2 dk)
+3. Canli demo: upload → workspace → OCR → translate (5 dk)
+4. AI coklu saglayici + appsettings (2 dk)
+5. Defter + TTS + admin (opsiyonel 1 dk)
+6. Sinirlamalar ve gelecek is (1 dk)
+7. Sorular
+
+
+================================================================================
+24 — BILINEN SINIRLAMALAR (DURUST ANLAT)
+================================================================================
+
+- Parolalar hash'lenmiyor (MVP demo seviyesi)
+- OCR gercek modlari Windows odakli
+- web/ Next.js iskeleti kok uygulamayla senkron degil
+- API anahtari yoksa Mock moda dusulebilir
+- README'de "admin out of scope" ifadesi guncel degil — admin paneli kodda var
+
+
+================================================================================
+Dosya olusturulma tarihi: 2026-05-21
+Konum: pdf_bitirme_clean/SUNUM_REHBERI.txt
+================================================================================

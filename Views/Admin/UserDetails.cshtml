@@ -1,6 +1,6 @@
 @model pdf_bitirme.Models.ViewModels.AdminUserDetailsViewModel
 @{
-    ViewData["Title"] = "Kullanici Detayi";
+    ViewData["Title"] = "User Details";
 }
 
 @*
@@ -10,41 +10,42 @@
 
     MODIFICATION NOTES (TR)
     - Gelecekte rol değiştirme butonu (User/Admin) eklenebilir.
+    - Kullanici banlama mevcut IsActive alaninin pasife alinmasi ile uygulanir.
     - Kullaniciyi silmek yerine soft delete alanı (DeletedAtUtc) eklenebilir.
     - Bu admin yapısı bitirme projesi kapsamında bilinçli olarak basit tutulmuştur; sonra genişletilebilir.
 *@
 
 <div class="container py-4">
     <div class="d-flex justify-content-between align-items-center mb-3">
-        <h1 class="h4 fw-bold mb-0">Kullanici Detayi</h1>
-        <a class="btn btn-outline-secondary" asp-action="Users">Listeye Don</a>
+        <h1 class="h4 fw-bold mb-0">User Details</h1>
+        <a class="btn btn-outline-secondary" asp-action="Users">Back to List</a>
     </div>
 
     <div class="card border-0 shadow-sm mb-3">
         <div class="card-body">
             <div class="row g-3">
                 <div class="col-md-6">
-                    <div class="small text-muted">Kullanici Adi</div>
+                    <div class="small text-muted">Username</div>
                     <div class="fw-semibold">@Model.Username</div>
                 </div>
                 <div class="col-md-6">
-                    <div class="small text-muted">E-posta</div>
+                    <div class="small text-muted">Email</div>
                     <div class="fw-semibold">@Model.Email</div>
                 </div>
                 <div class="col-md-3">
-                    <div class="small text-muted">Rol</div>
+                    <div class="small text-muted">Role</div>
                     <span class="badge admin-badge @(Model.Role == "Admin" ? "admin-badge-admin" : "admin-badge-neutral")">@Model.Role</span>
                 </div>
                 <div class="col-md-3">
-                    <div class="small text-muted">Hesap Durumu</div>
-                    <span class="badge admin-badge @(Model.IsActive ? "admin-badge-success" : "admin-badge-warning")">@(Model.IsActive ? "Aktif" : "Pasif")</span>
+                    <div class="small text-muted">Account Status</div>
+                    <span class="badge admin-badge @(Model.IsActive ? "admin-badge-success" : "admin-badge-warning")">@(Model.IsActive ? "Active" : "Passive")</span>
                 </div>
                 <div class="col-md-3">
-                    <div class="small text-muted">E-posta Dogrulama</div>
-                    <span class="badge admin-badge @(Model.IsEmailVerified ? "admin-badge-success" : "admin-badge-neutral")">@(Model.IsEmailVerified ? "Dogrulandi" : "Bekliyor")</span>
+                    <div class="small text-muted">Email Verification</div>
+                    <span class="badge admin-badge @(Model.IsEmailVerified ? "admin-badge-success" : "admin-badge-neutral")">@(Model.IsEmailVerified ? "Verified" : "Pending")</span>
                 </div>
                 <div class="col-md-6">
-                    <div class="small text-muted">Kayit Tarihi</div>
+                    <div class="small text-muted">Registered</div>
                     <div>@Model.CreatedAtUtc.ToLocalTime().ToString("f")</div>
                 </div>
             </div>
@@ -66,7 +67,7 @@
                     @Html.AntiForgeryToken()
                     <input type="hidden" name="email" value="@Model.Email" />
                     <input type="hidden" name="makeActive" value="false" />
-                    <button class="btn btn-warning" type="submit" onclick="return confirm('Kullaniciyi pasif yapmak istediginize emin misiniz?');">Pasif Yap</button>
+                    <button class="btn btn-warning" type="submit" onclick="return confirm('Are you sure you want to ban this user?');">Ban User</button>
                 </form>
             }
             else
@@ -75,13 +76,13 @@
                     @Html.AntiForgeryToken()
                     <input type="hidden" name="email" value="@Model.Email" />
                     <input type="hidden" name="makeActive" value="true" />
-                    <button class="btn btn-success" type="submit">Tekrar Aktif Et</button>
+                    <button class="btn btn-success" type="submit">Remove Ban</button>
                 </form>
             }
             <form asp-action="DeleteUser" method="post" class="m-0" data-loading-form="true">
                 @Html.AntiForgeryToken()
                 <input type="hidden" name="email" value="@Model.Email" />
-                <button class="btn btn-outline-danger" type="submit" onclick="return confirm('Bu kullaniciyi kalici olarak silmek istediginize emin misiniz?');">Kullaniciyi Sil</button>
+                <button class="btn btn-outline-danger" type="submit" onclick="return confirm('Are you sure you want to permanently delete this user?');">Delete User</button>
             </form>
         </div>
     </div>
