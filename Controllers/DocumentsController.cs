@@ -2,19 +2,21 @@ using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using pdf_bitirme.Models.ViewModels;
 using pdf_bitirme.Services;
+using pdf_bitirme.Services.Ai;
 using pdf_bitirme.Services.Ocr;
 
 namespace pdf_bitirme.Controllers;
 
 /*
  * [TR] Bu dosya ne işe yarar: Belge listesi, yükleme (GET/POST), detay, silme — PDF MVP.
- * [TR] Neden gerekli: CreativeDoc çekirdeği; OCR/AI bu aşamada yok, sadece depolama ve meta veri.
- * [TR] İlgili: DocumentService, Views/Documents/*
+ * [TR] Neden gerekli: CreativeDoc çekirdeği; seçili bölge OCR ve AI workspace bu controller ile bağlıdır.
+ * [TR] İlgili: DocumentService, Views/Documents/*, Gemini TTS (OCR metni seslendirme)
  *
  * MODIFICATION NOTES (TR)
  * - Toplu silme, dışa aktarma.
- * - Belge önizleme ve PDF içi bölge seçimi sonraki modül (OCR yalnızca seçili bölge).
+ * - Belge önizleme ve PDF içi bölge seçimi; OCR yalnızca seçili bölgede çalışır.
  * - Ocr:UseMock=false ayarıyla gerçek Tesseract OCR servisine geçiş desteklenir.
+ * - NarrateOcrSpeech: OCR textarea metnini Gemini TTS ile sese çevirir (Paddle/Tesseract OCR’dan bağımsız).
  * - Genel görüntü OCR future work.
  * - Zorluk: Orta.
  */
@@ -23,17 +25,24 @@ public class DocumentsController : Controller
 {
     private readonly IDocumentService _documentService;
     private readonly IOcrService _ocrService;
+    /// <summary>OCR çıktısını Gemini TTS ile sese çeviren servis (workspace “seslendir” butonu).</summary>
+    private readonly IGeminiTtsSpeechService _geminiTtsSpeech;
     private readonly IServiceProvider _services;
     private readonly IConfiguration _configuration;
 
+    /// <summary>
+    /// [TR] OCR motoru seçimi + çalışma alanı OCR metninin TTS için bağı — Gemini TTS burada enjekte edilir.
+    /// </summary>
     public DocumentsController(
         IDocumentService documentService,
         IOcrService ocrService,
+        IGeminiTtsSpeechService geminiTtsSpeech,
         IServiceProvider services,
         IConfiguration configuration)
     {
         _documentService = documentService;
         _ocrService = ocrService;
+        _geminiTtsSpeech = geminiTtsSpeech;
         _services = services;
         _configuration = configuration;
     }
@@ -142,6 +151,8 @@ public class DocumentsController : Controller
         model.PagePreviewEndpointUrl = Url.Action(nameof(PagePreview), new { id }) ?? string.Empty;
         model.ExtractTextEndpointUrl = Url.Action(nameof(ExtractText)) ?? string.Empty;
         model.SaveOcrEndpointUrl = Url.Action(nameof(SaveOcrText)) ?? string.Empty;
+        // [TR] OCR textarea’daki yazı NarrateOcrSpeech ile gönderilir; OCR motor seçimi ile ilgisi yoktur (sadece metin).
+        model.NarrateSpeechEndpointUrl = Url.Action(nameof(NarrateOcrSpeech)) ?? string.Empty;
         return View(model);
     }
 
@@ -277,6 +288,34 @@ public class DocumentsController : Controller
         });
     }
 
+    /// <summary>
+    /// [TR] Workspace OCR metin kutusundaki içeriği Gemini TTS ile ses olarak döner (Content-Type MIME dinamiktir).
+    /// Paddle veya Tesseract’un çalışma durumundan bağımsızdır; yalnızca gönderilen düz metin seslendirilir.
+    /// Hata halinde JSON { ok:false, message } ile BadRequest kullanılır.
+    /// </summary>
+    [HttpPost]
+    [ValidateAntiForgeryToken]
+    public async Task<IActionResult> NarrateOcrSpeech(
+        [FromBody] NarrateFromOcrRequestViewModel request,
+        CancellationToken cancellationToken)
+    {
+        var plain = request?.Text?.Trim();
+        if (string.IsNullOrWhiteSpace(plain))
+            return BadRequest(new { ok = false, message = "Seslendirme için OCR metni gerekli." });
+
+        try
+        {
+            var result = await _geminiTtsSpeech.SynthesizeAsync(plain, cancellationToken);
+            Response.Headers.CacheControl = "no-store";
+            return File(result.AudioBytes, result.ContentType);
+        }
+        catch (Exception ex)
+        {
+            var shortMsg = ex.Message.Length > 400 ? ex.Message[..400] + "..." : ex.Message;
+            return BadRequest(new { ok = false, message = $"Seslendirme hatası: {shortMsg}" });
+        }
+    }
+
     /// <summary>Düzenlenmiş OCR metnini veritabanına kaydeder.</summary>
     [HttpPost]
     [ValidateAntiForgeryToken]
@@ -318,6 +357,7 @@ public class DocumentsController : Controller
  * MODIFICATION NOTES (TR)
  * - Gelecekte PDF sayfa küçük resim endpoint’leri eklenebilir.
  * - Çoklu seçim ve annotation kayıt API’leri ayrı action’lar olabilir.
+ * - NarrateOcrSpeech: OCR metni → Gemini TTS; ApiKey için Ai:Gemini kullanıcı sırlarında tutulması önerilir.
  * - Genel resimden metin çıkarma özelliği bu sürümde bulunmamaktadır; future work olarak düşünülmüştür.
  * -----------------------------------------------------------------------------
  */

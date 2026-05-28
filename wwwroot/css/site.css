@@ -7,6 +7,9 @@
  * - Kurumsal tema: CSS değişkenleri tek yerden güncellenir.
  * - auth-page / auth-card: Giriş ve hesap formları için ayrı tema varyantı eklenebilir.
  * - Karanlık mod: prefers-color-scheme ile isteğe bağlı uzantı.
+ * - Workspace #ocr-status / #ai-status: .workspace-status-loading ile spinner + metin flex hizası (pdf-workspace.mjs).
+ * - AI Sohbet sağ üst: `.ai-chat-section--side-panel` geniş max-height; OCR `.workspace-ocr-text` daha düşük min-height (Details rows).
+ * - AI sonuç sayfası (Result.cshtml): workspace sohbeti localStorage — `.ai-chat-window--result-page`.
  * - Zorluk: Kolay.
  */
 
@@ -398,7 +401,7 @@ html {
 }
 
 .workspace-ocr-text {
-  min-height: 180px;
+  min-height: 130px;
   resize: vertical;
   /* [TR] OCR çıktısı TSV benzeri tablo içerebilir (PaddleOCR artık bbox'a göre
    *      aynı satırdaki hücreleri '\t' ile ayırıyor). Monospace font + tab-size
@@ -511,7 +514,7 @@ html {
 /*
  * -----------------------------------------------------------------------------
  * [TR] Workspace CSS notu:
- * - Sol tarafta viewer ve overlay; sağda daraltılabilir OCR/AI şeridi (.workspace-sidebar-rail).
+ * - Sol tarafta viewer ve overlay; sağ panelde üstte sohbet, altta OCR/AI. Bölge metrikleri üst toolbar’da.
  * - Sade görsel dil korunarak savunma ekran görüntülerine uygun düzen hedeflendi.
  *
  * MODIFICATION NOTES (TR)
@@ -519,13 +522,15 @@ html {
  * - Annotation araçları için renk/palette sınıfları eklenebilir.
  * - Text overlay katmanı için ayrı z-index yönetimi gerekebilir.
  * - Global alert ve loading-state stilleri eklendi.
+ * - AI Sohbet sağ panel üstü: dar sütunda .ai-chat-window max-height ile iç scroll (site.css).
  * - Genel resimden metin çıkarma özelliği bu sürümde bulunmamaktadır; future work olarak düşünülmüştür.
  * -----------------------------------------------------------------------------
  */
 
 /*
  * ─── AI SOHBET (WhatsApp tarzı) ──────────────────────────────────────────────
- * [TR] Workspace altında geniş, kendi içinde scroll edilebilen mesaj listesi.
+ * [TR] Mesaj listesi: tam genişlik sayfa düzeninde veya workspace-side-panel içinde (sağ sütun üstü, eski bölge alanı).
+ * - .ai-chat-section--side-panel: sağ sidebar’da .ai-chat-window yüksekliği viewport ile sınırlanır (sığdırma).
  * - .ai-chat-window: scroll alanı (max-height + overflow-y).
  * - .ai-chat-message: bir mesaj satırı; .ai-chat-message--user sağa, --ai sola.
  * - .ai-chat-bubble: balon (renk, padding, köşe, gölge).
@@ -536,6 +541,7 @@ html {
  * - Karanlık mod için renk değişkenlerine .dark-mode override eklenebilir.
  * - Avatar/saat damgası gibi WhatsApp detayları sonradan eklenebilir.
  * - Geniş ekranda balonların max-width oranı ayarlanabilir (şu an %78).
+ * - Sağ sidebar yerleşimi: .ai-chat-section--side-panel — panel üstü; max-height ile taşma önlenir.
  */
 .ai-chat-section {
   background: #ffffff;
@@ -543,8 +549,16 @@ html {
   overflow: hidden;
 }
 
-.ai-chat-header {
-  background: #f8fafc;
+/* [TR] Sağ üst sohbet: dikey alanı geniş tut (OCR kutusu site.css + Details rows ile küçültüldü).
+   MODIFICATION NOTES (TR): PDF solunda kullanılmıyorsa yalnızca --side-panel; tam genişlik düzeninde 520px üst sınır kalır. */
+.ai-chat-section--side-panel .ai-chat-window {
+  max-height: min(420px, 48vh);
+}
+
+/* [TR] Üst toolbar’da tek satır bölge özeti; dar ekranda satır kırılır. */
+.workspace-toolbar-region-metrics {
+  font-variant-numeric: tabular-nums;
+  word-break: break-word;
 }
 
 .ai-chat-window {
@@ -557,6 +571,11 @@ html {
   display: flex;
   flex-direction: column;
   gap: 0.85rem;
+}
+
+/* [TR] AI sonuç detay (Views/Ai/Result): workspace localStorage HTML; base .ai-chat-window’dan sonra tanımlanır (max-height override). */
+.ai-chat-window.ai-chat-window--result-page {
+  max-height: min(420px, 50vh);
 }
 
 .ai-chat-empty {
@@ -760,4 +779,25 @@ html {
 
 @media (max-width: 575px) {
   .ai-chat-bubble-wrap { max-width: 92%; }
+}
+
+/*
+ * [TR] Belge çalışma alanı OCR/AI durum satırları — setOcrStatus / setAiStatus loading modunda spinner + metin.
+ * [TR] Ne işe yarar: Bootstrap spinner ile metni yatayda hizalar; uzun metinde satır kayması daha düzenli görünür.
+ *
+ * MODIFICATION NOTES (TR)
+ * - Spinner satır içi inline flow’da kaymasını önlemek için flex; a11y için aria-live pdf-workspace.mjs HTML’inde.
+ * - Tema rengiyle uyum için border-color override ileride eklenebilir.
+ */
+#ocr-status.workspace-status-loading,
+#ai-status.workspace-status-loading {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.25rem;
+}
+
+#ocr-status .workspace-status-spinner,
+#ai-status .workspace-status-spinner {
+  flex-shrink: 0;
 }
