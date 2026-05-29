@@ -385,19 +385,115 @@ function getAiChatStorageKey() {
 function persistAiChat() {
   if (!documentId || !chatWindow) return;
   const msgs = [...chatWindow.querySelectorAll(".ai-chat-message")].filter(
-    (n) => !n.querySelector(".ai-chat-typing") && !n.querySelector(".ai-chat-audio-player")
+    (n) =>
+      !n.querySelector(".ai-chat-typing") &&
+      !n.querySelector(".ai-chat-audio-player") &&
+      !n.classList.contains("ai-chat-message--op-setup")
   );
   const html = msgs.map((n) => n.outerHTML).join("");
+  const sources = serializeAiChatSources();
   try {
     const key = getAiChatStorageKey();
     if (!html.trim()) {
       localStorage.removeItem(key);
       return;
     }
-    localStorage.setItem(key, JSON.stringify({ v: 1, html }));
+    localStorage.setItem(key, JSON.stringify({ v: 2, html, sources }));
   } catch (e) {
     console.warn("AI chat could not be written to local storage:", e);
   }
+}
+
+function serializeAiChatSources() {
+  const out = {};
+  collectChatSourceIds().forEach((id) => {
+    const s = aiChatSources.get(id);
+    if (!s) return;
+    out[id] = {
+      text: s.text || "",
+      imageDataUrl: s.imageDataUrl || null,
+      imageBase64: s.imageBase64 || null,
+      imageMimeType: s.imageMimeType || null,
+    };
+  });
+  return out;
+}
+
+function collectChatSourceIds() {
+  const ids = new Set();
+  chatWindow?.querySelectorAll(".ai-chat-message[data-source-id]").forEach((el) => {
+    if (el.dataset.sourceId) ids.add(el.dataset.sourceId);
+  });
+  if (textSourceId) ids.add(textSourceId);
+  if (imageSourceId) ids.add(imageSourceId);
+  return ids;
+}
+
+function parseDataUrl(dataUrl) {
+  const m = /^data:([^;]+);base64,(.+)$/.exec(dataUrl || "");
+  if (!m) return { mime: null, base64: null };
+  return { mime: m[1], base64: m[2] };
+}
+
+function cssEscape(value) {
+  if (typeof CSS !== "undefined" && typeof CSS.escape === "function") return CSS.escape(value);
+  return String(value).replace(/\\/g, "\\\\").replace(/"/g, '\\"');
+}
+
+function rebuildSourceFromDom(sourceId) {
+  if (!sourceId || !chatWindow) return false;
+  const msg = chatWindow.querySelector(
+    `.ai-chat-message--user[data-source-id="${cssEscape(sourceId)}"]`
+  );
+  if (!msg) return false;
+
+  const textHost = msg.querySelector('[data-role="chat-source-text"]');
+  const text = textHost ? textHost.innerText.replace(/\s+\n/g, "\n").trim() : "";
+  const img = msg.querySelector(".ai-chat-bubble img");
+  let imageDataUrl = null;
+  let imageBase64 = null;
+  let imageMimeType = null;
+  if (img?.src) {
+    imageDataUrl = img.src;
+    if (img.src.startsWith("data:")) {
+      const parsed = parseDataUrl(img.src);
+      imageBase64 = parsed.base64;
+      imageMimeType = parsed.mime;
+    }
+  }
+  if (!text && !imageDataUrl) return false;
+
+  aiChatSources.set(sourceId, { text, imageDataUrl, imageBase64, imageMimeType });
+  return true;
+}
+
+function restoreAiChatSources(storedSources) {
+  if (!storedSources || typeof storedSources !== "object") return;
+  Object.entries(storedSources).forEach(([id, s]) => {
+    if (!id || !s) return;
+    aiChatSources.set(id, {
+      text: s.text || "",
+      imageDataUrl: s.imageDataUrl || null,
+      imageBase64: s.imageBase64 || null,
+      imageMimeType: s.imageMimeType || null,
+    });
+  });
+}
+
+function ensureSourceInMemory(sourceId) {
+  if (!sourceId) return false;
+  if (aiChatSources.has(sourceId)) return true;
+  return rebuildSourceFromDom(sourceId);
+}
+
+function dismissPendingChatOpSetups() {
+  if (!chatWindow) return;
+  let removed = false;
+  chatWindow.querySelectorAll(".ai-chat-message--op-setup").forEach((el) => {
+    el.remove();
+    removed = true;
+  });
+  if (removed) persistAiChat();
 }
 
 function saveChatMessageToServer({ role, messageType, text, imageUrl, audioUrl, resultUrl }) {
@@ -440,6 +536,12 @@ function restoreAiChat() {
   if (!data || typeof data.html !== "string" || !data.html.trim()) return;
 
   chatWindow.innerHTML = data.html;
+  if (data.v >= 2 && data.sources) {
+    restoreAiChatSources(data.sources);
+  }
+  chatWindow.querySelectorAll(".ai-chat-message[data-source-id]").forEach((el) => {
+    if (el.dataset.sourceId) ensureSourceInMemory(el.dataset.sourceId);
+  });
   chatMessageCount = chatWindow.querySelectorAll(".ai-chat-message").length;
   updateChatCount();
   scrollChatToBottom();
@@ -590,6 +692,14 @@ function buildChatModelOptions() {
 
 async function appendChatOperationSetup(sourceId, operation) {
   if (!chatWindow) return;
+  dismissPendingChatOpSetups();
+  if (!ensureSourceInMemory(sourceId)) {
+    replaceWithAiMessage(null, {
+      text: "This chat card came from an older session, so its operation data is no longer in memory. Please select the text or image again.",
+      isError: true,
+    });
+    return;
+  }
   const source = aiChatSources.get(sourceId);
   if (!source) {
     replaceWithAiMessage(null, {
@@ -606,7 +716,7 @@ async function appendChatOperationSetup(sourceId, operation) {
   ensureChatVisible();
   const opLabel = AI_CHAT_OPERATION_DEFS.find((d) => d.op === operation)?.label || operation;
   const wrap = document.createElement("div");
-  wrap.className = "ai-chat-message ai-chat-message--ai";
+  wrap.className = "ai-chat-message ai-chat-message--ai ai-chat-message--op-setup";
   wrap.innerHTML = `
     <div class="ai-chat-bubble-wrap ai-chat-bubble-wrap--wide">
       ${buildOpFormHtml(sourceId, operation, opLabel)}
@@ -666,6 +776,7 @@ function buildOpFormHtml(sourceId, operation, opLabel) {
 }
 
 async function runChatOperation(form) {
+  dismissPendingChatOpSetups();
   const source = aiChatSources.get(form.dataset.sourceId || "");
   const operation = form.dataset.operation || "Explanation";
   if (!source || !aiProcessUrl || !documentId) return;
@@ -872,12 +983,20 @@ if (chatWindow) {
     if (opBtn) {
       const sourceId = opBtn.dataset.sourceId || "";
       const operation = opBtn.dataset.operation || "";
+      if (!ensureSourceInMemory(sourceId)) {
+        replaceWithAiMessage(null, {
+          text: "This chat card came from an older session, so its operation data is no longer in memory. Please select the text or image again.",
+          isError: true,
+        });
+        return;
+      }
       const source = aiChatSources.get(sourceId);
       if (operation === "Narrate") {
         if (!source?.text?.trim()) {
           setOcrStatus("error", "No text found for narration.");
           return;
         }
+        dismissPendingChatOpSetups();
         createNarrationInChat(source.text, opBtn);
         return;
       }
@@ -1081,6 +1200,7 @@ function positionFnFlyout(btn) {
 // [TR] Fonksiyon rayındaki butona basınca: ya seslendirmeyi başlatır (Narrate)
 //      ya da rayın sağında alt fonksiyon penceresini (ayar formu) açar.
 async function openFnFlyout(btn, operation) {
+  dismissPendingChatOpSetups();
   if (!fnFlyout) return;
   if (!hasSendableSource()) {
     warnNoSource();
@@ -1116,6 +1236,7 @@ if (fnRail) {
         return;
       }
       hideFnFlyout();
+      dismissPendingChatOpSetups();
       createNarrationInChat(src.text, btn);
       return;
     }
@@ -1367,36 +1488,56 @@ function showRegionPopup() {
   regionPopup.classList.remove("d-none");
   // [TR] Önce görünür yap, sonra ölç (offsetHeight/Width d-none iken 0 olur).
   const ph = regionPopup.offsetHeight || 96;
-  const pw = regionPopup.offsetWidth || 240;
-  const wrapW = canvasWrap.clientWidth || pw;
-  const wrapH = canvasWrap.clientHeight || ph;
+  const pw = regionPopup.offsetWidth || 300;
+  const gap = 8;
 
-  // [TR] Görünür alan (panelin solu) — popup'ın bu alanı aşmaması için referans.
-  //      viewerFrame'in scroll konumuna göre o an ekranda görünen yatay aralık.
   const visLeft = viewerFrame ? viewerFrame.scrollLeft : 0;
-  const visRight = visLeft + (viewerFrame ? viewerFrame.clientWidth : wrapW);
+  const visRight = visLeft + (viewerFrame ? viewerFrame.clientWidth : canvasWrap.clientWidth);
+  const vTop = visTop();
+  const vBottom = viewerFrame ? viewerFrame.scrollTop + viewerFrame.clientHeight : canvasWrap.clientHeight;
 
-  // [TR] ÖNCELİK: seçimin ÜSTÜ. Üstte yer yoksa SOL tarafa, o da olmazsa ALT.
-  let top = currentRect.top - ph - 8;
-  let left = currentRect.left;
-  if (top < visTop()) {
-    // [TR] Üstte sığmıyor → sola dene.
-    const leftCandidate = currentRect.left - pw - 8;
-    if (leftCandidate >= visLeft) {
-      left = leftCandidate;
-      top = currentRect.top;
-    } else {
-      // [TR] Sol da olmuyor → altına koy.
-      top = currentRect.top + currentRect.height + 8;
-    }
+  const rect = currentRect;
+
+  function fits(left, top) {
+    return left >= visLeft && left + pw <= visRight && top >= vTop && top + ph <= vBottom;
   }
 
-  // [TR] Yatay/dikey olarak görünür alana sıkıştır.
-  left = Math.max(visLeft, Math.min(left, Math.max(visLeft, visRight - pw)));
-  top = Math.max(0, Math.min(top, Math.max(0, wrapH - ph)));
+  function clamp(left, top) {
+    return {
+      left: Math.max(visLeft, Math.min(left, Math.max(visLeft, visRight - pw))),
+      top: Math.max(vTop, Math.min(top, Math.max(vTop, vBottom - ph))),
+    };
+  }
 
-  regionPopup.style.top = `${top}px`;
-  regionPopup.style.left = `${left}px`;
+  // [TR] Öncelik: SAĞ → SOL → ÜST → ALT. Sağda boşluk varken (panel sola
+  //      itilmemişken) menü seçimin yanına açılır; yalnızca başka yer kalmazsa alta iner.
+  const candidates = [
+    { left: rect.left + rect.width + gap, top: rect.top },
+    { left: rect.left - pw - gap, top: rect.top },
+    { left: rect.left, top: rect.top - ph - gap },
+    { left: rect.left, top: rect.top + rect.height + gap },
+  ];
+
+  let pos = null;
+  for (const c of candidates) {
+    if (fits(c.left, c.top)) {
+      pos = c;
+      break;
+    }
+  }
+  if (!pos) {
+    for (const c of candidates) {
+      const clamped = clamp(c.left, c.top);
+      if (fits(clamped.left, clamped.top)) {
+        pos = clamped;
+        break;
+      }
+    }
+  }
+  if (!pos) pos = clamp(candidates[0].left, candidates[0].top);
+
+  regionPopup.style.top = `${pos.top}px`;
+  regionPopup.style.left = `${pos.left}px`;
 }
 
 // [TR] Görünür alanın üst sınırı (frame scrollTop) — popup üstte sığar mı kontrolü.
@@ -2086,6 +2227,7 @@ function appendChatNarrationMessage(audioSource, sourceText, savedInfo = {}) {
 }
 
 async function createNarrationInChat(text, triggerButton = null) {
+  dismissPendingChatOpSetups();
   const plain = (text || "").trim();
   if (!narrateSpeechUrl) {
     setOcrStatus("error", "Narration endpoint is not configured.");
@@ -2163,6 +2305,7 @@ if (btnNarrateOcrSpeech && ocrTextarea) {
 if (btnAiProcess) {
   btnAiProcess.addEventListener("click", () => {
     if (!aiProcessUrl || !documentId || !ocrTextarea) return;
+    dismissPendingChatOpSetups();
     const inputText = (ocrTextarea.value || "").trim();
     const customInstruction = (aiInstruction?.value || "").trim();
     const hasImage = !!capturedImage;
@@ -2551,6 +2694,11 @@ async function init() {
     // [TR] Panelleri/seçimi tazele (pulse yok — sessiz geri yükleme). Tek kaynak
     //      varsa otomatik seçili → fonksiyonlar kilitli olmaz.
     refreshComposeState({ pulse: false });
+
+    chatWindow?.querySelectorAll(".ai-chat-message[data-source-id]").forEach((el) => {
+      if (el.dataset.sourceId) ensureSourceInMemory(el.dataset.sourceId);
+    });
+    persistAiChat();
 
     if (lastOcrResultId && btnSaveOcrText) btnSaveOcrText.disabled = false;
     // [TR] Sayfa açılışında varsayılan işlem (Translate) için model listesi yüklenir.
