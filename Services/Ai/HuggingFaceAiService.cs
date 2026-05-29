@@ -188,11 +188,19 @@ public class HuggingFaceAiService : IAiService
             ? $"Rewrite in {request.Style ?? "Formal"} style"
             : request.CustomInstruction;
 
-        var systemPrompt = "You are a professional writing assistant. " +
-                           "Rewrite the given text according to the user's instruction. " +
-                           "Return ONLY the rewritten text.";
+        var systemPrompt = """
+            You are a professional rewriting assistant. Rewrite the given text according to the user's instruction.
+            Output ONLY the rewritten text — no commentary, explanations, analysis, or meta-remarks about the original.
+            Do not quote the original and then comment on it. The rewrite may be shorter or longer as needed.
+            """;
 
-        var userPrompt = $"Instruction: {instruction}\n\nText:\n{request.InputText}";
+        var userPrompt = $"""
+            Instruction: {instruction}
+            Style: {request.Style ?? "Formal"}
+
+            Source text to rewrite (output only the rewritten version):
+            {request.InputText}
+            """;
 
         return await CallChatAsync(request.ModelName!, systemPrompt, userPrompt, ct);
     }
@@ -207,13 +215,23 @@ public class HuggingFaceAiService : IAiService
         CancellationToken ct)
     {
         var instruction = string.IsNullOrWhiteSpace(request.CustomInstruction)
-            ? "Expand this text creatively and engagingly"
+            ? "Creatively expand and reimagine the source while keeping its subject and core content"
             : request.CustomInstruction;
 
-        var systemPrompt = "You are a creative writer with a vivid imagination. " +
-                           "Generate creative content based on the given text and instruction.";
+        var systemPrompt = """
+            You are a creative writing assistant. Transform the SOURCE TEXT according to the instruction.
+            The result must be a creative reworking of the source — keep its subject, context, and core content.
+            If the instruction adds themes or topics, weave them into a rewrite OF the source; do not ignore the source and write unrelated new content.
+            Output ONLY the creative text — no explanations.
+            """;
 
-        var userPrompt = $"Instruction: {instruction}\n\nSource text:\n{request.InputText}";
+        var userPrompt = $"""
+            Instruction: {instruction}
+            Style: {request.Style ?? "Formal"}
+
+            Source text to transform creatively:
+            {request.InputText}
+            """;
 
         return await CallChatAsync(request.ModelName!, systemPrompt, userPrompt, ct, maxTokens: 3000);
     }
@@ -241,13 +259,20 @@ public class HuggingFaceAiService : IAiService
             ? request.InputText[..4000]
             : request.InputText;
 
-        var systemPrompt =
-            "You are an analytical assistant. Explain the given text in Turkish: " +
-            "(1) identify the content type, (2) analyze it in detail (count groups/numbers, " +
-            "list characters/dates/places, describe data structure if any), " +
-            "(3) provide useful inferences. Use short paragraphs and bullet points when helpful.";
+        var systemPrompt = """
+            You are an analytical assistant. Explain the given content clearly in three plain-text sections:
+            Content type, Detailed analysis, Insights.
+            Plain text only — no Markdown: no # headers, no * or ** bullets/bold, no backticks.
+            Use section titles on their own line, then normal paragraphs. Numbered lines (1. 2.) are OK; asterisks are not.
+            If the user instruction asks for a specific focus, follow it while keeping plain readable text.
+            """;
 
-        var userPrompt = $"User instruction (priority if any): {instruction}\n\nText to explain:\n{input}";
+        var userPrompt = $"""
+            User instruction (priority if any): {instruction}
+
+            Text to explain:
+            {input}
+            """;
 
         return await CallChatAsync(request.ModelName!, systemPrompt, userPrompt, ct, maxTokens: 3000);
     }

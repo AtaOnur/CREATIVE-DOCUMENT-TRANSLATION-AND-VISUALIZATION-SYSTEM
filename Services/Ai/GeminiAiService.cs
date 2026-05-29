@@ -522,8 +522,12 @@ public class GeminiAiService : IAiService
                 {
                     "Translate"     => $"Detect the text in the image and translate it into {tgt}. Write only the translations.",
                     "Summarize"     => "Write a short summary of what you see in the image.",
-                    "Rewrite"       => "Describe the image in a short, clear paragraph.",
-                    "CreativeWrite" => $"Write an original, short text in a {style} style inspired by the image.",
+                    "Rewrite"       => string.IsNullOrWhiteSpace(instr)
+                        ? "Extract the text from the image and rewrite it clearly. Output ONLY the rewritten text — no commentary."
+                        : $"Extract the text from the image and rewrite it as follows: {instr}. Output ONLY the rewritten text — no commentary or explanation.",
+                    "CreativeWrite" => string.IsNullOrWhiteSpace(instr)
+                        ? $"Extract the text or subject from the image and write a creative {style} reworking of it. Output ONLY the creative text."
+                        : $"Extract the text or subject from the image and creatively transform it as follows: {instr}. Keep the image content as the base; weave the instruction into a rewrite of that content. Output ONLY the creative text.",
                     "Explanation"   => BuildExplanationInstruction(),
                     "Math" =>
                         """
@@ -534,15 +538,16 @@ public class GeminiAiService : IAiService
                     _               => "Explain this image in detail."
                 };
 
-            return $"""
+            var imagePrompt = $"""
                 Analyze the following image and follow this instruction:
                 {imageInstruction}
 
                 (Context - Document: {documentTitle})
                 """;
+            return AppendLanguageDirective(imagePrompt, req.OperationType, tgt);
         }
 
-        return req.OperationType switch
+        var textPrompt = req.OperationType switch
         {
             "Translate" =>
                 $"""
@@ -565,20 +570,34 @@ public class GeminiAiService : IAiService
 
             "Rewrite" =>
                 $"""
-                Rewrite the following text according to this instruction: "{instr}"
-                If there is no instruction, make the text more fluent and understandable.
-                Write only the rewritten text.
+                You are a professional rewriting assistant. REWRITE the source text below — do not comment on it, explain it, analyze it, or discuss what it says.
 
-                Original text (Document: {documentTitle}):
+                Rules:
+                - Output ONLY the rewritten text. No introductions, no commentary, no notes about changes, no "here is the rewrite" phrases.
+                - Do not quote the original and then add remarks. Do not summarize or critique the source.
+                - Follow the user instruction. If none is given, rewrite in {style} style to be clearer and more fluent.
+                - Preserve the core meaning and facts unless the instruction explicitly asks to change them.
+                - The rewrite may be shorter or longer than the original as needed.
+
+                User instruction: {(string.IsNullOrWhiteSpace(instr) ? $"(none — rewrite in {style} style)" : instr)}
+
+                Source text (Document: {documentTitle}):
                 {text}
                 """,
 
             "CreativeWrite" =>
                 $"""
-                Write a creative text in a {style} style inspired by the following text.
-                Use original and fluent language. Write only the creative text.
+                You are a creative writing assistant. Creatively TRANSFORM the source text below — do not ignore it and write unrelated new content.
 
-                Inspiration source (Document: {documentTitle}):
+                Rules:
+                - The output must be a creative reworking of the source: keep its subject, context, and core ideas, then reshape them as instructed.
+                - If the user asks to add themes or topics (e.g. "include cats and dogs"), weave them into a creative rewrite OF the source — do not replace the source with a brand-new piece on only that theme.
+                - Style: {style}. Output ONLY the creative text — no explanations or meta-commentary.
+                - Apply the user instruction to HOW you transform the source, not as a standalone writing topic that ignores the source.
+
+                User instruction: {(string.IsNullOrWhiteSpace(instr) ? "(none — creatively expand and reimagine the source while keeping its subject)" : instr)}
+
+                Source text (Document: {documentTitle}):
                 {text}
                 """,
 
@@ -613,6 +632,26 @@ public class GeminiAiService : IAiService
 
             _ => $"Process the following text:\n\n{text}"
         };
+
+        return AppendLanguageDirective(textPrompt, req.OperationType, tgt);
+    }
+
+    /// <summary>
+    /// [TR] Çeviri dışındaki TÜM işlemlerde, kullanıcının seçtiği hedef dilde cevap
+    /// üretilmesini zorunlu kılar. Kullanıcı prompt'u kendi dilinde yazsa bile cevap
+    /// seçilen dilde döner. "Auto" / boş seçildiğinde dil dayatılmaz (kaynak diliyle yanıt).
+    /// Translate işlemi zaten {tgt} diline çevirdiği için yönerge eklenmez.
+    /// </summary>
+    private static string AppendLanguageDirective(string prompt, string? operationType, string? targetLanguage)
+    {
+        if (string.Equals(operationType, "Translate", StringComparison.OrdinalIgnoreCase))
+            return prompt;
+        if (string.IsNullOrWhiteSpace(targetLanguage) ||
+            string.Equals(targetLanguage, "Auto", StringComparison.OrdinalIgnoreCase))
+            return prompt;
+
+        return prompt +
+            $"\n\nIMPORTANT: Write your entire answer in {targetLanguage}, regardless of the language of the source text or the instruction.";
     }
 
     /// <summary>
@@ -623,25 +662,23 @@ public class GeminiAiService : IAiService
     private static string BuildExplanationInstruction() =>
         """
         You are an analytical assistant. Review the provided content (text and/or image) and clearly explain what it is.
-        Follow these three steps in order:
 
-        1) CONTENT TYPE - First identify the content type. Examples:
-           bar/line/pie chart, photograph (landscape, object, person, vehicle, animal, etc.),
-           screenshot, article, story/literary text, historical text, code snippet,
-           numerical data table (for example student grades), list, formula, etc.
+        Structure your answer in three plain-text sections. Put each section title on its own line, then write normal sentences underneath (no Markdown):
 
-        2) DETAILED ANALYSIS - Describe concretely what appears in the content:
-           - If it is visual: main subject(s), background, visible people/objects, action/event,
-             text/labels, color/shape clues. Define it when possible (for example, "this is a bar chart:
-             the X axis is courses, the Y axis is student count; the tallest bar is Mathematics = 24").
-           - If it is text: explain the topic, people/places/dates/numbers it contains, and any data structure.
-             If it includes numerical/table data, group categories and count values (for example, "AA: 4, BA: 6, BB: 12").
-             For story or historical text, include summary + characters/period + main events.
+        Content type:
+        Identify what kind of content this is (chart, photograph, article, story, table, code, list, formula, etc.).
 
-        3) INSIGHTS - Add useful context when possible: what it could be used for, what topic it relates to,
-           distribution/pattern/trend, or notable anomalies. If you speculate, state that clearly.
+        Detailed analysis:
+        Describe concretely what appears in the content. For visuals: subjects, labels, axes, values, colors. For text: topic, key facts, people, dates, numbers, structure. If there is tabular or numeric data, summarize groups and counts in normal sentences.
 
-        Style: use bullets and short paragraphs; add headings when useful.
+        Insights:
+        Add useful context: purpose, related topics, patterns, trends, or notable points. Mark speculation clearly.
+
+        Formatting rules (IMPORTANT):
+        - Plain text only. Do NOT use Markdown symbols: no # headers, no * or ** for bullets or bold, no backticks, no --- dividers.
+        - Write section titles as plain words on their own line, then normal paragraphs below.
+        - Prefer flowing sentences; if you must list items, use numbered lines (1. 2. 3.) without asterisks or hash marks.
+        - If the user gave a custom instruction, follow it while keeping the answer in this plain, readable format.
         """;
 
     /// <summary>

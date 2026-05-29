@@ -96,20 +96,24 @@
         @RenderBody()
     </main>
 
-    <footer class="app-footer mt-auto border-top py-4">
-        <div class="container small text-center text-md-start">
-            <div class="row align-items-center g-2">
-                <div class="col-md-8">
-                    <strong>Creative Document Translation and Visualisation System</strong> — under active development.
-                </div>
-                <div class="col-md-4 text-md-end text-muted">
-                    &copy; @DateTime.UtcNow.Year
-                    — <a asp-controller="Home" asp-action="Faq" class="link-secondary">FAQ</a>
-                    · <a asp-controller="Home" asp-action="Privacy" class="link-secondary">Privacy</a>
+    @* [TR] HideFooter bayrağı set edilmişse (ör. çalışma alanı sayfası) footer gizlenir → tam ekran kullanımı. *@
+    @if (!(ViewData["HideFooter"] is bool hideFooter && hideFooter))
+    {
+        <footer class="app-footer mt-auto border-top py-4">
+            <div class="container small text-center text-md-start">
+                <div class="row align-items-center g-2">
+                    <div class="col-md-8">
+                        <strong>Creative Document Translation and Visualisation System</strong> — under active development.
+                    </div>
+                    <div class="col-md-4 text-md-end text-muted">
+                        &copy; @DateTime.UtcNow.Year
+                        — <a asp-controller="Home" asp-action="Faq" class="link-secondary">FAQ</a>
+                        · <a asp-controller="Home" asp-action="Privacy" class="link-secondary">Privacy</a>
+                    </div>
                 </div>
             </div>
-        </div>
-    </footer>
+        </footer>
+    }
 
     <script src="~/lib/jquery/dist/jquery.min.js"></script>
     <script src="~/lib/bootstrap/dist/js/bootstrap.bundle.min.js"></script>

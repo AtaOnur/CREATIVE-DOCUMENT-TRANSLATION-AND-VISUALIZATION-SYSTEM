@@ -103,6 +103,38 @@ const chatCount = document.getElementById("ai-chat-count");
 const btnClearChat = document.getElementById("btn-clear-chat");
 let chatMessageCount = 0;
 
+// ─── CREATIVE: yüzen panel + fonksiyon rayı + bölge popup'ı ──────────────────
+// [TR] Yeni düzen elemanları (Details.cshtml). Eski yan panel artık PDF üstünde
+//      yüzen, sola/sağa genişletilebilir bir panele dönüştü.
+const workspaceBody = document.getElementById("workspace-body");
+const overlayPanel = document.getElementById("workspace-overlay-panel");
+const panelResizer = document.getElementById("workspace-panel-resizer");
+const fnRail = document.getElementById("workspace-fn-rail");
+const fnFlyout = document.getElementById("workspace-fn-flyout");
+const regionPopup = document.getElementById("region-popup");
+const composeEmpty = document.getElementById("workspace-compose-empty");
+const canvasWrap = document.getElementById("workspace-viewer-canvas-wrap");
+const workspaceCompose = document.getElementById("workspace-compose");
+
+// [TR] CREATIVE (4. tur): seçilebilir kaynak panelleri + region toast + kopyala.
+const ocrTextPanel = document.getElementById("ocr-text-panel");
+const btnClearOcrText = document.getElementById("btn-clear-ocr-text");
+const btnCopyCapturedImage = document.getElementById("btn-copy-captured-image");
+const regionToast = document.getElementById("region-toast");
+const regionToastText = document.getElementById("region-toast-text");
+
+// [TR] Compose alanındaki iki kaynak: OCR metni ve yakalanan görsel. Hangisi
+//      "seçili" ise fonksiyonlar onun üzerinde çalışır.
+let textSourceId = null;
+let imageSourceId = null;
+let currentComposeKind = null; // "text" | "image" | null
+
+// [TR] Fonksiyon rayının üzerinde çalışacağı "aktif kaynak" (son OCR metni veya
+//      yakalanan görsel). Bölge popup'ından Extract/Select ile güncellenir.
+let workspaceActiveSourceId = null;
+// [TR] Bölge popup'ında seçilen OCR motoru (varsayılan PaddleOCR).
+let selectedOcrEngine = "Paddle";
+
 // ─── OCR → chat içi Gemini TTS oynatıcı yardımcıları ───
 const NARRATE_SEEK_SECONDS = 10;
 
@@ -268,7 +300,7 @@ function ensureChatVisible() {
 }
 
 function updateChatCount() {
-  if (chatCount) chatCount.textContent = `${chatMessageCount} mesaj`;
+  if (chatCount) chatCount.textContent = `${chatMessageCount} msj`;
 }
 
 function scrollChatToBottom() {
@@ -428,7 +460,8 @@ function buildReactionChips(reactions) {
 function buildChatOperationButtons(sourceId, { hasText, hasImage }) {
   if (!sourceId) return "";
   const buttons = AI_CHAT_OPERATION_DEFS
-    .filter((d) => (d.needsText ? hasText : d.needsAny ? hasText || hasImage : true))
+    // [TR] Metin veya görsel varsa tüm işlemler kullanılabilir (görsel de gönderilebilir).
+    .filter(() => hasText || hasImage)
     .map(
       (d) =>
         `<button type="button" class="ai-chat-op-button" data-role="chat-op" data-source-id="${escapeHtml(sourceId)}" data-operation="${escapeHtml(d.op)}">` +
@@ -436,7 +469,21 @@ function buildChatOperationButtons(sourceId, { hasText, hasImage }) {
         "</button>"
     )
     .join("");
-  return `<div class="ai-chat-op-row" aria-label="AI operations">${buttons}</div>`;
+  if (!buttons) return "";
+  // [TR] İşlemler balonun İÇİNDE ayrı bir bölmede: çizgiyle ayrılır, başlık +
+  //      katlanabilir (collapsed) buton ızgarası. Böylece "yeniden yapılabilir
+  //      işlemler" ile "yapılmış işlem reaksiyonları" karışmaz; çok buton varken
+  //      sohbeti kaplamaz, kullanıcı genişletince tümünü görür.
+  return (
+    '<hr class="ai-chat-divider ai-chat-ops-divider" />' +
+    '<div class="ai-chat-ops">' +
+    '<button type="button" class="ai-chat-ops__toggle" data-role="ops-toggle" aria-expanded="false">' +
+    "<span>↻ Run another operation on this</span>" +
+    '<span class="ai-chat-ops__chevron" aria-hidden="true">▾</span>' +
+    "</button>" +
+    `<div class="ai-chat-op-row ai-chat-op-row--collapsed" aria-label="AI operations">${buttons}</div>` +
+    "</div>"
+  );
 }
 
 function createAiChatSource({ contentText, imageDataUrl, imageBase64, imageMimeType }) {
@@ -503,14 +550,17 @@ function appendUserMessage({ imageDataUrl, contentText, prompt, reactions, sourc
     inner.push(renderCollapsibleText(prompt));
   }
 
-  inner.push("</div>"); // bubble
-  inner.push(buildReactionChips(reactions));
+  // [TR] İşlem menüsü artık balonun İÇİNDE (kapanıştan önce).
   inner.push(
     buildChatOperationButtons(sourceId, {
       hasText: !!(contentText && contentText.trim()),
       hasImage: !!imageDataUrl,
     })
   );
+
+  inner.push("</div>"); // bubble
+  // [TR] Reaksiyon çipleri balonun ALTINDA (yapılmış işlemler — reaksiyon emojisi gibi).
+  inner.push(buildReactionChips(reactions));
   inner.push("</div>"); // bubble-wrap
 
   wrap.innerHTML = inner.join("");
@@ -554,17 +604,28 @@ async function appendChatOperationSetup(sourceId, operation) {
   }
 
   ensureChatVisible();
-  const setupId = `chat-setup-${Date.now()}-${Math.random().toString(16).slice(2)}`;
   const opLabel = AI_CHAT_OPERATION_DEFS.find((d) => d.op === operation)?.label || operation;
   const wrap = document.createElement("div");
   wrap.className = "ai-chat-message ai-chat-message--ai";
   wrap.innerHTML = `
     <div class="ai-chat-bubble-wrap ai-chat-bubble-wrap--wide">
+      ${buildOpFormHtml(sourceId, operation, opLabel)}
+    </div>`;
+  chatWindow.appendChild(wrap);
+  scrollChatToBottom();
+}
+
+// [TR] Operasyon ayar formu HTML'i — hem chat balonunda hem de soldaki fonksiyon
+//      rayının flyout'unda kullanılır (DRY). data-role="chat-op-form" → submit
+//      yakalayıcıları runChatOperation(form) çağırır.
+function buildOpFormHtml(sourceId, operation, opLabel) {
+  const setupId = `chat-setup-${Date.now()}-${Math.random().toString(16).slice(2)}`;
+  return `
       <form class="ai-chat-op-form" data-role="chat-op-form" data-source-id="${escapeHtml(sourceId)}" data-operation="${escapeHtml(operation)}" id="${escapeHtml(setupId)}">
         <div class="ai-chat-op-form__title">${escapeHtml(opLabel)} settings</div>
         <div class="ai-chat-op-form__grid">
-          <label class="ai-chat-op-field ${operation === "Translate" ? "" : "d-none"}">
-            <span>Hedef dil</span>
+          <label class="ai-chat-op-field">
+            <span>${operation === "Translate" ? "Hedef dil" : "Cevap dili"}</span>
             <select class="form-select form-select-sm" data-field="targetLanguage">
               <option value="Turkish">Turkish</option>
               <option value="English" selected>English</option>
@@ -601,10 +662,7 @@ async function appendChatOperationSetup(sourceId, operation) {
           <button type="submit" class="btn btn-sm btn-dark">Run</button>
           <button type="button" class="btn btn-sm btn-outline-secondary" data-role="chat-op-cancel">Cancel</button>
         </div>
-      </form>
-    </div>`;
-  chatWindow.appendChild(wrap);
-  scrollChatToBottom();
+      </form>`;
 }
 
 async function runChatOperation(form) {
@@ -631,16 +689,27 @@ async function runChatOperation(form) {
     { kind: "model", label: payload.modelName },
     { kind: "style", label: payload.style },
   ];
-  if (operation === "Translate") reactions.push({ kind: "lang", label: `→ ${payload.targetLanguage}` });
+  // [TR] Çeviri her zaman hedef dili gösterir; diğer işlemlerde kullanıcı belirli
+  //      bir cevap dili seçtiyse (Auto değilse) onu da reaksiyon olarak gösterir.
+  const tgtLang = payload.targetLanguage;
+  if (operation === "Translate") {
+    reactions.push({ kind: "lang", label: `→ ${tgtLang}` });
+  } else if (tgtLang && tgtLang.toLowerCase() !== "auto") {
+    reactions.push({ kind: "lang", label: `→ ${tgtLang}` });
+  }
 
+  // [TR] Her işlemde hangi metin/görsel üzerine uygulandığı ilk seferki gibi
+  //      tam olarak gösterilir (sadece "AI operation" demek yerine kaynağı yazar).
   appendUserMessage({
-    imageDataUrl: null,
-    contentText: `AI operation: ${operation}`,
+    imageDataUrl: source.imageDataUrl || null,
+    contentText: source.text || (source.imageDataUrl ? "" : `AI operation: ${operation}`),
     prompt: payload.customInstruction,
     reactions,
+    sourceId: form.dataset.sourceId || null,
   });
 
-  const typingNode = appendAiTypingPlaceholder();
+  const controller = new AbortController();
+  const typingNode = appendAiTypingPlaceholder(controller);
   form.closest(".ai-chat-message")?.remove();
   setAiStatus("info", "AI operation is running from chat...", { loading: true });
 
@@ -652,6 +721,7 @@ async function runChatOperation(form) {
         RequestVerificationToken: antiForgeryToken,
       },
       body: JSON.stringify(payload),
+      signal: controller.signal,
     });
     const res = await r.json();
     if (!res.ok) {
@@ -669,25 +739,37 @@ async function runChatOperation(form) {
       aiResultLink.href = res.resultUrl;
       aiResultLink.classList.remove("d-none");
     }
-  } catch {
+  } catch (e) {
+    // [TR] Kullanıcı Stop'a bastıysa hata değil, "iptal edildi" mesajı göster.
+    if (e?.name === "AbortError") {
+      setAiStatus("info", "Operation cancelled.");
+      replaceWithAiMessage(typingNode, { text: "⏹ Operation cancelled by user." });
+      return;
+    }
     setAiStatus("error", "An error occurred during the AI request.");
     replaceWithAiMessage(typingNode, { text: "An error occurred during the AI request.", isError: true });
   }
 }
 
 // [TR] AI yazıyor... bekleme balonu — istek tamamlandığında kaldırılır/ değiştirilir.
-function appendAiTypingPlaceholder() {
+//      abortController verilirse "Stop" butonu eklenir; kullanıcı işlemi yarıda kesebilir.
+function appendAiTypingPlaceholder(abortController = null) {
   if (!chatWindow) return null;
   ensureChatVisible();
 
   const wrap = document.createElement("div");
   wrap.className = "ai-chat-message ai-chat-message--ai";
+  const stopBtn = abortController
+    ? '<button type="button" class="ai-chat-stop-btn" data-role="chat-stop" title="Stop">⏹ Stop</button>'
+    : "";
   wrap.innerHTML = `
     <div class="ai-chat-bubble-wrap">
-      <div class="ai-chat-bubble">
+      <div class="ai-chat-bubble ai-chat-bubble--typing">
         <span class="ai-chat-typing"><span></span><span></span><span></span></span>
+        ${stopBtn}
       </div>
     </div>`;
+  if (abortController) wrap._abortController = abortController;
   chatWindow.appendChild(wrap);
   scrollChatToBottom();
   return wrap;
@@ -756,11 +838,36 @@ if (btnClearChat) {
       clone.classList.remove("d-none");
       chatWindow.appendChild(clone);
     }
+    // [TR] Sohbet temizlenince yalnızca flyout'u kapat; compose kaynakları
+    //      (extracted text / görsel) korunur ki kullanıcı onlar üzerinde işlemeye
+    //      devam edebilsin.
+    hideFnFlyout();
   });
 }
 
 if (chatWindow) {
   chatWindow.addEventListener("click", (ev) => {
+    // [TR] Balon içi işlem bölmesini aç/kapat (genişlet).
+    const opsToggle = ev.target?.closest?.('[data-role="ops-toggle"]');
+    if (opsToggle) {
+      const row = opsToggle.parentElement?.querySelector(".ai-chat-op-row");
+      if (row) {
+        const nowCollapsed = row.classList.toggle("ai-chat-op-row--collapsed");
+        opsToggle.setAttribute("aria-expanded", String(!nowCollapsed));
+        const chev = opsToggle.querySelector(".ai-chat-ops__chevron");
+        if (chev) chev.textContent = nowCollapsed ? "▾" : "▴";
+      }
+      return;
+    }
+
+    // [TR] Devam eden işlemi yarıda durdur (Stop).
+    const stopBtn = ev.target?.closest?.('[data-role="chat-stop"]');
+    if (stopBtn) {
+      const msg = stopBtn.closest(".ai-chat-message");
+      if (msg && msg._abortController) msg._abortController.abort();
+      return;
+    }
+
     const opBtn = ev.target?.closest?.('[data-role="chat-op"]');
     if (opBtn) {
       const sourceId = opBtn.dataset.sourceId || "";
@@ -793,6 +900,581 @@ if (chatWindow) {
   });
 }
 
+// ─── CREATIVE: AKTİF KAYNAK + COMPOSE ALANI ─────────────────────────────────
+// [TR] Bölge seçilip "Extract text" veya "Select as image" denince üretilen
+//      kaynak burada "aktif" olur; soldaki fonksiyon rayı bu kaynak üzerinde çalışır.
+// [TR] Mor dalga animasyonu tercihi (localStorage). Kapalıysa yalnızca mor arka plan kalır.
+const FN_WAVE_PREF_KEY = "pdf_bitirme_fn_wave_anim";
+function isFnWaveEnabled() {
+  try {
+    return localStorage.getItem(FN_WAVE_PREF_KEY) !== "0";
+  } catch {
+    return true;
+  }
+}
+function saveFnWavePref(enabled) {
+  try {
+    localStorage.setItem(FN_WAVE_PREF_KEY, enabled ? "1" : "0");
+  } catch {
+    /* yoksay */
+  }
+}
+
+function updateFnWaveToggleLabel() {
+  const waveToggle = document.getElementById("fn-wave-toggle");
+  const label = waveToggle?.closest("label")?.querySelector("span");
+  if (!waveToggle || !label) return;
+  label.textContent = waveToggle.checked ? "Disable effect" : "Enable effect";
+  waveToggle.setAttribute("aria-label", label.textContent);
+}
+
+function setActiveSource(sourceId, { pulse = true } = {}) {
+  workspaceActiveSourceId = sourceId || null;
+  updateFnRailEnabled();
+  if (fnRail) {
+    fnRail.classList.toggle("is-armed", !!sourceId);
+    if (sourceId && pulse && isFnWaveEnabled()) {
+      fnRail.classList.remove("is-pulsing");
+      void fnRail.offsetWidth;
+      fnRail.classList.add("is-pulsing");
+      setTimeout(() => fnRail.classList.remove("is-pulsing"), 900);
+    } else if (!sourceId) {
+      fnRail.classList.remove("is-pulsing");
+    }
+  }
+}
+
+// ─── CREATIVE (4. tur): KAYNAK SEÇİMİ (metin / görsel) ──────────────────────
+// [TR] Compose kartlarındaki radyo seçimi + aktif kaynak senkronizasyonu.
+function setComposeSelection(kind, { pulse = true } = {}) {
+  currentComposeKind = kind || null;
+  document.querySelectorAll(".compose-source").forEach((p) => {
+    p.classList.toggle("is-selected", !!kind && p.dataset.kind === kind);
+  });
+  const id = kind === "text" ? textSourceId : kind === "image" ? imageSourceId : null;
+  setActiveSource(id, { pulse });
+}
+
+// [TR] Panellerin görünürlüğünü, boş durumu ve otomatik/zorunlu seçimi yeniler.
+//      justAdded: yeni eklenen kaynak ("text"|"image") → iki kaynak da varsa o seçilir.
+function refreshComposeState({ pulse = false, justAdded = null } = {}) {
+  const hasText = !!textSourceId;
+  const hasImage = !!imageSourceId;
+  ocrTextPanel?.classList.toggle("d-none", !hasText);
+  capturedImagePanel?.classList.toggle("d-none", !hasImage);
+  if (composeEmpty) composeEmpty.classList.toggle("d-none", hasText || hasImage);
+  workspaceCompose?.classList.toggle("workspace-compose--has-sources", hasText || hasImage);
+
+  let kind = currentComposeKind;
+  // [TR] Yeni eklenen kaynak (justAdded) varsa onu seç — kullanıcı az önce
+  //      yakaladığı içeriği kullanmak ister; ayrıca hangisinin aktif olduğu netleşir.
+  if (justAdded === "text" && hasText) kind = "text";
+  else if (justAdded === "image" && hasImage) kind = "image";
+  if (kind === "text" && !hasText) kind = null;
+  if (kind === "image" && !hasImage) kind = null;
+  if (!kind) {
+    if (hasText && !hasImage) kind = "text";
+    else if (hasImage && !hasText) kind = "image";
+    // ikisi de varsa ve hiç seçim yoksa: kullanıcı kartlardan birini seçmeli (kilit).
+  }
+  setComposeSelection(kind, { pulse: pulse && !!kind });
+}
+
+// ─── CREATIVE: DİKEY FONKSİYON RAYI (görsel 3 tarzı) ─────────────────────────
+// [TR] AI_CHAT_OPERATION_DEFS'ten ikon + etiketli dikey butonlar üretir.
+function buildFnRail() {
+  if (!fnRail) return;
+  const header = '<div class="workspace-fn-rail__title" aria-hidden="true">Functions</div>';
+  const list =
+    '<div class="workspace-fn-rail__list">' +
+    AI_CHAT_OPERATION_DEFS.map(
+      (d) =>
+        `<button type="button" class="workspace-fn-btn" data-operation="${escapeHtml(d.op)}">` +
+        `<span class="workspace-fn-btn__icon" aria-hidden="true">${d.icon}</span>` +
+        `<span class="workspace-fn-btn__label">${escapeHtml(d.label)}</span>` +
+        "</button>"
+    ).join("") +
+    "</div>";
+  const footer =
+    '<div class="workspace-fn-rail__footer">' +
+    '<label class="workspace-fn-rail__wave-toggle" title="Toggle purple wave animation">' +
+    '<input type="checkbox" id="fn-wave-toggle" aria-label="Enable effect" />' +
+    '<span>Enable effect</span></label></div>';
+  fnRail.innerHTML = header + list + footer;
+  const waveToggle = document.getElementById("fn-wave-toggle");
+  if (waveToggle) {
+    waveToggle.checked = isFnWaveEnabled();
+    updateFnWaveToggleLabel();
+    waveToggle.addEventListener("change", () => {
+      saveFnWavePref(waveToggle.checked);
+      updateFnWaveToggleLabel();
+    });
+  }
+  positionResizerHint();
+}
+
+// [TR] Gönderilebilir aktif kaynak var mı? (metin veya görsel)
+function getActiveSource() {
+  if (!workspaceActiveSourceId) return null;
+  return aiChatSources.get(workspaceActiveSourceId) || null;
+}
+
+function hasSendableSource() {
+  const src = getActiveSource();
+  return !!(src && (src.text?.trim() || src.imageBase64));
+}
+
+function warnNoSource() {
+  if (textSourceId || imageSourceId) {
+    setOcrStatus("error", "Gönderilecek kaynak seçilmedi. Yukarıdan metin veya görseli seçin.");
+  } else {
+    setOcrStatus("error", "Gönderilecek bir şey bulunamadı. Önce PDF üzerinde bölge seçin.");
+  }
+}
+
+// [TR] Mor çubuk üzerindeki ↔ ipucunu Creative–Explain arasına hizala.
+function positionResizerHint() {
+  const hint = document.getElementById("workspace-panel-resizer-hint");
+  if (!hint || !panelResizer || !fnRail) return;
+  const creativeBtn = fnRail.querySelector('[data-operation="CreativeWrite"]');
+  const explainBtn = fnRail.querySelector('[data-operation="Explanation"]');
+  if (!creativeBtn || !explainBtn) return;
+  const resizerRect = panelResizer.getBoundingClientRect();
+  const creativeRect = creativeBtn.getBoundingClientRect();
+  const explainRect = explainBtn.getBoundingClientRect();
+  const midY = (creativeRect.bottom + explainRect.top) / 2 - resizerRect.top;
+  hint.style.top = `${Math.max(8, midY)}px`;
+}
+
+function updateFnRailEnabled() {
+  if (!fnRail) return;
+  fnRail.querySelectorAll(".workspace-fn-btn").forEach((btn) => {
+    const def = AI_CHAT_OPERATION_DEFS.find((d) => d.op === btn.dataset.operation);
+    btn.title = def?.label || "";
+    btn.classList.toggle(
+      "is-active",
+      btn.dataset.operation === fnFlyout?.dataset.operation && !fnFlyout?.classList.contains("d-none")
+    );
+  });
+}
+
+function hideFnFlyout() {
+  if (!fnFlyout) return;
+  fnFlyout.classList.add("d-none");
+  fnFlyout.innerHTML = "";
+  delete fnFlyout.dataset.operation;
+  updateFnRailEnabled();
+}
+
+function positionFnFlyout(btn) {
+  if (!fnFlyout || !overlayPanel || !fnRail) return;
+  const panelRect = overlayPanel.getBoundingClientRect();
+  const railRect = fnRail.getBoundingClientRect();
+  const btnRect = btn.getBoundingClientRect();
+  const flyH = fnFlyout.offsetHeight || 220;
+  let top = btnRect.top - panelRect.top;
+  top = Math.max(8, Math.min(top, panelRect.height - flyH - 8));
+  fnFlyout.style.top = `${top}px`;
+  fnFlyout.style.left = `${railRect.right - panelRect.left + 6}px`;
+}
+
+// [TR] Fonksiyon rayındaki butona basınca: ya seslendirmeyi başlatır (Narrate)
+//      ya da rayın sağında alt fonksiyon penceresini (ayar formu) açar.
+async function openFnFlyout(btn, operation) {
+  if (!fnFlyout) return;
+  if (!hasSendableSource()) {
+    warnNoSource();
+    return;
+  }
+  if (typeof loadModelsForTask === "function") {
+    await loadModelsForTask(operation);
+  }
+  const opLabel = AI_CHAT_OPERATION_DEFS.find((d) => d.op === operation)?.label || operation;
+  fnFlyout.innerHTML =
+    `<div class="workspace-fn-flyout__head">${escapeHtml(opLabel)}</div>` +
+    buildOpFormHtml(workspaceActiveSourceId, operation, opLabel);
+  fnFlyout.dataset.operation = operation;
+  fnFlyout.classList.remove("d-none");
+  positionFnFlyout(btn);
+  updateFnRailEnabled();
+}
+
+if (fnRail) {
+  buildFnRail();
+  fnRail.addEventListener("click", (ev) => {
+    const btn = ev.target?.closest?.(".workspace-fn-btn");
+    if (!btn) return;
+    const operation = btn.dataset.operation || "";
+    if (!hasSendableSource()) {
+      warnNoSource();
+      return;
+    }
+    if (operation === "Narrate") {
+      const src = aiChatSources.get(workspaceActiveSourceId || "");
+      if (!src?.text?.trim()) {
+        setOcrStatus("error", "No text found for narration.");
+        return;
+      }
+      hideFnFlyout();
+      createNarrationInChat(src.text, btn);
+      return;
+    }
+    // [TR] Aynı butona tekrar basınca aç/kapat (toggle).
+    if (!fnFlyout.classList.contains("d-none") && fnFlyout.dataset.operation === operation) {
+      hideFnFlyout();
+      return;
+    }
+    openFnFlyout(btn, operation);
+  });
+}
+
+if (fnFlyout) {
+  fnFlyout.addEventListener("submit", (ev) => {
+    const form = ev.target?.closest?.('[data-role="chat-op-form"]');
+    if (!form) return;
+    ev.preventDefault();
+    hideFnFlyout();
+    runChatOperation(form);
+  });
+  fnFlyout.addEventListener("click", (ev) => {
+    if (ev.target?.closest?.('[data-role="chat-op-cancel"]')) hideFnFlyout();
+  });
+}
+
+// [TR] Flyout dışına / başka yere tıklanınca kapansın.
+document.addEventListener("mousedown", (ev) => {
+  if (!fnFlyout || fnFlyout.classList.contains("d-none")) return;
+  if (fnFlyout.contains(ev.target)) return;
+  if (ev.target?.closest?.(".workspace-fn-btn")) return; // ray click'i kendi yönetir
+  hideFnFlyout();
+});
+
+// ─── CREATIVE: PANEL GENİŞLETME (mor tutamak) ───────────────────────────────
+// [TR] Sol kenardaki mor çizgi sürüklenerek panel sola/sağa genişletilir.
+//      Panel PDF üstünde absolute olduğundan, genişledikçe PDF'in daha çoğunu örter.
+let panelResizing = false;
+const panelResizerHint = document.getElementById("workspace-panel-resizer-hint");
+function startPanelResize(ev) {
+  if (ev.button !== 0) return;
+  panelResizing = true;
+  document.body.classList.add("workspace-resizing");
+  ev.preventDefault();
+}
+if (panelResizer) {
+  panelResizer.addEventListener("mousedown", startPanelResize);
+  panelResizerHint?.addEventListener("mousedown", startPanelResize);
+  window.addEventListener("mousemove", (ev) => {
+    if (!panelResizing || !overlayPanel || !workspaceBody) return;
+    const bodyRect = workspaceBody.getBoundingClientRect();
+    let w = bodyRect.right - ev.clientX;
+    const min = 320;
+    const max = Math.max(min, bodyRect.width - 160);
+    w = Math.max(min, Math.min(max, w));
+    overlayPanel.style.width = `${w}px`;
+    syncViewerPanRoom();
+  });
+  window.addEventListener("mouseup", () => {
+    if (!panelResizing) return;
+    panelResizing = false;
+    document.body.classList.remove("workspace-resizing");
+    hideFnFlyout();
+    positionResizerHint();
+  });
+}
+
+// ─── CREATIVE: PDF KAYDIRMA / PAN ALANI ─────────────────────────────────────
+// [TR] Yüzen panel PDF'in sağını örttüğü için, canvas'a sağ/alt boşluk ekleriz;
+//      böylece kullanıcı sayfanın panel altında kalan kısmını sol görünür alana
+//      kaydırabilir. PDF sola yaslı render edilir (CSS margin:0).
+const viewerFrame = document.getElementById("workspace-viewer-frame");
+const viewerArea = document.getElementById("workspace-viewer-area");
+// [TR] CREATIVE (3. tur): PDF görünür alanı yüzen panelin SOLUNDA kalsın; böylece
+//      kaydırma çubukları (dikey: mor tutamağın hemen solunda, yatay: altta) her
+//      zaman görünür ve panelin altına gizlenmez. Görünür alan genişliği panel
+//      boyutuna göre anlık ayarlanır.
+function syncViewerPanRoom() {
+  if (!workspaceBody) return;
+  const isOverlay = overlayPanel && getComputedStyle(overlayPanel).position === "absolute";
+  if (viewerArea) {
+    if (isOverlay) {
+      const bodyW = workspaceBody.clientWidth;
+      const panelW = overlayPanel.offsetWidth;
+      viewerArea.style.width = `${Math.max(220, bodyW - panelW)}px`;
+    } else {
+      viewerArea.style.width = "";
+    }
+  }
+  // [TR] Sola yaslı; ekstra margin gerekmiyor (alan zaten panelin solunda).
+  if (canvasWrap) {
+    canvasWrap.style.marginRight = "0px";
+    canvasWrap.style.marginBottom = "0px";
+  }
+}
+
+// [TR] PDF'i görünür alana (panelin soluna) genişlikçe sığdır (fit-to-width).
+async function fitToWidth() {
+  if (!pdfDoc || !viewerFrame) return;
+  syncViewerPanRoom();
+  const page = await pdfDoc.getPage(currentPage);
+  const unit = page.getViewport({ scale: 1.0 });
+  zoom = Math.max(0.4, Math.min(2.5, (viewerFrame.clientWidth - 14) / unit.width));
+  await renderPage(currentPage);
+}
+
+// ─── CREATIVE (3. tur): ÇALIŞMA ALANI DURUMUNU KORU ─────────────────────────
+// [TR] "Open detailed result" ile gidip geri dönünce sayfa/zoom/kaydırma ve
+//      seçili bölge kaybolmasın diye localStorage'a yazıp geri yükleriz.
+const WS_STATE_PREFIX = "pdf_bitirme_ws_state_v1";
+function getWsStateKey() {
+  return `${WS_STATE_PREFIX}:${documentId}`;
+}
+let wsStateSaveTimer = null;
+function saveWsState() {
+  if (!documentId) return;
+  try {
+    let region = null;
+    if (currentRect && overlay) {
+      const ow = overlay.clientWidth || 1;
+      const oh = overlay.clientHeight || 1;
+      region = {
+        pageNumber: currentRect.pageNumber,
+        nx: currentRect.left / ow,
+        ny: currentRect.top / oh,
+        nw: currentRect.width / ow,
+        nh: currentRect.height / oh,
+      };
+    }
+    // [TR] Kaynakları da kaydet → geri dönünce extracted text / görsel hazır gelir,
+    //      fonksiyonlar kilitli olmaz (yeniden bölge seçmeye gerek kalmaz).
+    const textSrc = textSourceId ? aiChatSources.get(textSourceId) : null;
+    const imgSrc = imageSourceId ? aiChatSources.get(imageSourceId) : null;
+    const state = {
+      page: currentPage,
+      zoom,
+      scrollLeft: viewerFrame ? viewerFrame.scrollLeft : 0,
+      scrollTop: viewerFrame ? viewerFrame.scrollTop : 0,
+      region,
+      composeKind: currentComposeKind,
+      ocrText: textSrc ? textSrc.text || "" : null,
+      ocrResultId: lastOcrResultId || "",
+      image: imgSrc
+        ? {
+            dataUrl: imgSrc.imageDataUrl || (capturedImagePreview ? capturedImagePreview.src : ""),
+            base64: imgSrc.imageBase64 || null,
+            mime: imgSrc.imageMimeType || "image/png",
+          }
+        : null,
+    };
+    localStorage.setItem(getWsStateKey(), JSON.stringify(state));
+  } catch {
+    /* yoksay */
+  }
+}
+function saveWsStateDebounced() {
+  if (wsStateSaveTimer) clearTimeout(wsStateSaveTimer);
+  wsStateSaveTimer = setTimeout(saveWsState, 250);
+}
+function loadWsState() {
+  if (!documentId) return null;
+  try {
+    const raw = localStorage.getItem(getWsStateKey());
+    return raw ? JSON.parse(raw) : null;
+  } catch {
+    return null;
+  }
+}
+
+// [TR] Orta tuş veya Space + sol tık ile sürükleyerek PDF'i kaydır (pan).
+let spaceDown = false;
+let panning = false;
+let panStart = null;
+window.addEventListener("keydown", (evt) => {
+  if (evt.code === "Space" && document.activeElement?.tagName !== "TEXTAREA" && document.activeElement?.tagName !== "INPUT") {
+    spaceDown = true;
+    if (overlay) overlay.style.cursor = "grab";
+  }
+});
+window.addEventListener("keyup", (evt) => {
+  if (evt.code === "Space") {
+    spaceDown = false;
+    if (overlay) overlay.style.cursor = "";
+  }
+});
+function startPan(evt) {
+  if (!viewerFrame) return false;
+  panning = true;
+  panStart = {
+    x: evt.clientX,
+    y: evt.clientY,
+    left: viewerFrame.scrollLeft,
+    top: viewerFrame.scrollTop,
+  };
+  if (overlay) overlay.style.cursor = "grabbing";
+  evt.preventDefault();
+  return true;
+}
+overlay.addEventListener("mousedown", (evt) => {
+  // [TR] Orta tuş (1) veya Space basılıyken sol tık → pan; çizim/selection devre dışı.
+  if (evt.button === 1 || (evt.button === 0 && spaceDown)) {
+    startPan(evt);
+  }
+}, true); // capture: çizim handler'ından önce çalışsın
+window.addEventListener("mousemove", (evt) => {
+  if (!panning || !panStart || !viewerFrame) return;
+  viewerFrame.scrollLeft = panStart.left - (evt.clientX - panStart.x);
+  viewerFrame.scrollTop = panStart.top - (evt.clientY - panStart.y);
+});
+window.addEventListener("mouseup", () => {
+  if (!panning) return;
+  panning = false;
+  panStart = null;
+  if (overlay) overlay.style.cursor = spaceDown ? "grab" : "";
+});
+
+// ─── CREATIVE: BÖLGE POPUP'I (seçimin üstünde hızlı menü) ────────────────────
+// [TR] Seçili dikdörtgenin hemen üstünde "Extract text / Select as image" +
+//      OCR motoru seçimi (Paddle varsayılan). Görsel 2 & 4.
+function hideRegionPopup() {
+  regionPopup?.classList.add("d-none");
+}
+
+// [TR] Seçimin/popup'ın hemen üstünde beliren yeşil onay kutusu (✓ + işlem adı).
+//      Yukarı doğru çıkar, 2sn durur, sonra geri inip kaybolur.
+let regionToastTimer = null;
+function showRegionToast(text) {
+  if (!regionToast || !regionPopup) return;
+  // [TR] Toast popup'ın çocuğudur; popup gizliyse (mouse uzaklaşmış olabilir)
+  //      seçim hâlâ varsa popup'ı yeniden göster ki onay kutusu görünsün.
+  if (regionPopup.classList.contains("d-none") && currentRect) showRegionPopup();
+  if (regionToastText) regionToastText.textContent = text || "Done";
+  if (regionToastTimer) clearTimeout(regionToastTimer);
+  regionToast.classList.remove("d-none", "is-leaving");
+  // reflow → giriş animasyonu yeniden tetiklensin
+  void regionToast.offsetWidth;
+  regionToast.classList.add("is-visible");
+  regionToastTimer = setTimeout(() => {
+    regionToast.classList.remove("is-visible");
+    regionToast.classList.add("is-leaving");
+    regionToastTimer = setTimeout(() => {
+      regionToast.classList.add("d-none");
+      regionToast.classList.remove("is-leaving");
+    }, 280);
+  }, 2000);
+}
+
+function showRegionPopup() {
+  if (!regionPopup || !currentRect || !canvasWrap) return;
+  regionPopup.classList.remove("d-none");
+  // [TR] Önce görünür yap, sonra ölç (offsetHeight/Width d-none iken 0 olur).
+  const ph = regionPopup.offsetHeight || 96;
+  const pw = regionPopup.offsetWidth || 240;
+  const wrapW = canvasWrap.clientWidth || pw;
+  const wrapH = canvasWrap.clientHeight || ph;
+
+  // [TR] Görünür alan (panelin solu) — popup'ın bu alanı aşmaması için referans.
+  //      viewerFrame'in scroll konumuna göre o an ekranda görünen yatay aralık.
+  const visLeft = viewerFrame ? viewerFrame.scrollLeft : 0;
+  const visRight = visLeft + (viewerFrame ? viewerFrame.clientWidth : wrapW);
+
+  // [TR] ÖNCELİK: seçimin ÜSTÜ. Üstte yer yoksa SOL tarafa, o da olmazsa ALT.
+  let top = currentRect.top - ph - 8;
+  let left = currentRect.left;
+  if (top < visTop()) {
+    // [TR] Üstte sığmıyor → sola dene.
+    const leftCandidate = currentRect.left - pw - 8;
+    if (leftCandidate >= visLeft) {
+      left = leftCandidate;
+      top = currentRect.top;
+    } else {
+      // [TR] Sol da olmuyor → altına koy.
+      top = currentRect.top + currentRect.height + 8;
+    }
+  }
+
+  // [TR] Yatay/dikey olarak görünür alana sıkıştır.
+  left = Math.max(visLeft, Math.min(left, Math.max(visLeft, visRight - pw)));
+  top = Math.max(0, Math.min(top, Math.max(0, wrapH - ph)));
+
+  regionPopup.style.top = `${top}px`;
+  regionPopup.style.left = `${left}px`;
+}
+
+// [TR] Görünür alanın üst sınırı (frame scrollTop) — popup üstte sığar mı kontrolü.
+function visTop() {
+  return viewerFrame ? viewerFrame.scrollTop : 0;
+}
+
+if (regionPopup) {
+  // [TR] Varsayılan motor görsel olarak işaretli (Paddle).
+  regionPopup.addEventListener("click", (ev) => {
+    const eng = ev.target?.closest?.(".region-engine-opt");
+    if (eng) {
+      selectedOcrEngine = eng.dataset.engine || "Paddle";
+      if (ocrEngineSelect) ocrEngineSelect.value = selectedOcrEngine;
+      regionPopup.querySelectorAll(".region-engine-opt").forEach((b) =>
+        b.classList.toggle("is-active", b === eng)
+      );
+      return;
+    }
+    const act = ev.target?.closest?.("[data-region-action]");
+    if (!act) return;
+    const action = act.dataset.regionAction;
+    if (action === "extract") {
+      if (ocrEngineSelect) ocrEngineSelect.value = selectedOcrEngine;
+      btnExtract?.click();
+    } else if (action === "image") {
+      btnSelectImage?.click();
+    } else if (action === "copy") {
+      copyRegionImageToClipboard();
+    }
+    // [TR] İşlemden sonra popup'ı KAPATMA — kullanıcı fikir değiştirip diğer
+    //      seçeneği uygulayabilsin (yeniden bölge seçmesi gerekmesin).
+  });
+
+  regionPopup.addEventListener("mousemove", syncRegionPopupHover);
+  regionPopup.addEventListener("mouseleave", syncRegionPopupHover);
+}
+
+// ─── CREATIVE: bölge popup'ı hover ile yeniden görünür ──────────────────────
+// [TR] Bölge seçiliyken mouse seçim/popup üzerindeyken menü anında görünür;
+//      ayrılınca gecikmesiz gizlenir.
+function pointInRegionPopup(p) {
+  if (!regionPopup || regionPopup.classList.contains("d-none")) return false;
+  const left = parseFloat(regionPopup.style.left) || 0;
+  const top = parseFloat(regionPopup.style.top) || 0;
+  const w = regionPopup.offsetWidth;
+  const h = regionPopup.offsetHeight;
+  const pad = 6;
+  return (
+    p.x >= left - pad &&
+    p.x <= left + w + pad &&
+    p.y >= top - pad &&
+    p.y <= top + h + pad
+  );
+}
+function syncRegionPopupHover(evt) {
+  if (drawing || panning || !currentRect) return;
+  const p = normalizeMousePosition(evt);
+  if (pointInCurrentRect(p) || pointInRegionPopup(p)) {
+    if (regionPopup?.classList.contains("d-none")) showRegionPopup();
+  } else {
+    hideRegionPopup();
+  }
+}
+function pointInCurrentRect(p) {
+  if (!currentRect) return false;
+  const pad = 6;
+  return (
+    p.x >= currentRect.left - pad &&
+    p.x <= currentRect.left + currentRect.width + pad &&
+    p.y >= currentRect.top - pad &&
+    p.y <= currentRect.top + currentRect.height + pad
+  );
+}
+overlay.addEventListener("mousemove", (evt) => {
+  syncRegionPopupHover(evt);
+});
+
 function clearDraftRect() {
   currentRect = null;
   rect.classList.add("d-none");
@@ -800,8 +1482,9 @@ function clearDraftRect() {
   rect.style.top = "";
   rect.style.width = "";
   rect.style.height = "";
-  // [TR] Bölge temizlenince koordinat panelini de sıfırla.
+  // [TR] Bölge temizlenince koordinat panelini ve hızlı menüyü de sıfırla.
   setRegionInfo(null);
+  hideRegionPopup();
 }
 
 function drawDraftRect(x1, y1, x2, y2) {
@@ -822,7 +1505,40 @@ function drawDraftRect(x1, y1, x2, y2) {
   setRegionInfo({ pageNumber: currentPage, x: left, y: top, width, height });
 }
 
+// [TR] Bölgeyi normalize (0..1) yakala/uygula — zoom değişince seçim doğru yerde kalsın.
+function captureRegionNormalized() {
+  if (!currentRect || !overlay) return null;
+  const ow = overlay.clientWidth || 1;
+  const oh = overlay.clientHeight || 1;
+  return {
+    pageNumber: currentRect.pageNumber,
+    nx: currentRect.left / ow,
+    ny: currentRect.top / oh,
+    nw: currentRect.width / ow,
+    nh: currentRect.height / oh,
+  };
+}
+function applyRegionNormalized(norm) {
+  if (!norm || !overlay || !rect) return;
+  const ow = overlay.clientWidth || 1;
+  const oh = overlay.clientHeight || 1;
+  const left = norm.nx * ow;
+  const top = norm.ny * oh;
+  const width = norm.nw * ow;
+  const height = norm.nh * oh;
+  currentRect = { left, top, width, height, pageNumber: norm.pageNumber };
+  rect.style.left = `${left}px`;
+  rect.style.top = `${top}px`;
+  rect.style.width = `${width}px`;
+  rect.style.height = `${height}px`;
+  rect.classList.remove("d-none");
+  setRegionInfo({ pageNumber: norm.pageNumber, x: left, y: top, width, height });
+}
+
 async function renderPage(pageNumber) {
+  // [TR] Zoom/render boyunca seçili bölge oranını koru (px değil oran).
+  const keepRegion =
+    currentRect && currentRect.pageNumber === pageNumber ? captureRegionNormalized() : null;
   // [TR] Önce pdf.js (tarayıcı içi) ile render etmeyi dene — server tarafında
   //      pdftoppm.exe bağımlılığı yok. pdf.js herhangi bir sebeple başarısız
   //      olursa server tarafındaki PagePreview endpoint'ine düşeriz.
@@ -857,6 +1573,9 @@ async function renderPage(pageNumber) {
   pageInput.value = String(currentPage);
   pageTotal.textContent = `/ ${pdfDoc ? pdfDoc.numPages : 1}`;
   zoomLabel.textContent = `${Math.round(zoom * 100)}%`;
+  // [TR] Zoom/sayfa değişince görünür alanı yenile, sonra bölgeyi yeni ölçeğe uygula.
+  syncViewerPanRoom();
+  if (keepRegion) applyRegionNormalized(keepRegion);
 }
 
 async function renderPageFromServer(pageNumber) {
@@ -893,7 +1612,10 @@ async function renderPageFromServer(pageNumber) {
 }
 
 function normalizeMousePosition(evt) {
-  const b = overlay.getBoundingClientRect();
+  // [TR] Koordinatları canvas üzerinden ölç — overlay ile hizalama kayması olmasın.
+  const el = canvas || canvasWrap || overlay;
+  if (!el) return { x: 0, y: 0 };
+  const b = el.getBoundingClientRect();
   return {
     x: Math.max(0, Math.min(evt.clientX - b.left, b.width)),
     y: Math.max(0, Math.min(evt.clientY - b.top, b.height)),
@@ -904,7 +1626,11 @@ function normalizeMousePosition(evt) {
 //      modu kaldırıldı; selection her zaman aktiftir.
 overlay.addEventListener("mousedown", (evt) => {
   if (evt.button !== 0) return; // sadece sol tık
+  if (spaceDown || panning) return; // [TR] Space/orta tuş ile pan yapılıyorsa çizim yapma
   drawing = true;
+  // [TR] Yeni seçim başlarken eski hızlı menüyü ve flyout'u kapat.
+  hideRegionPopup();
+  hideFnFlyout();
   const p = normalizeMousePosition(evt);
   startX = p.x;
   startY = p.y;
@@ -927,8 +1653,12 @@ window.addEventListener("mouseup", () => {
   // [TR] Çizim bittiğinde minik (yanlışlıkla) seçimleri at.
   if (currentRect && (currentRect.width < 4 || currentRect.height < 4)) {
     clearDraftRect();
+  } else if (currentRect) {
+    // [TR] Geçerli seçim → seçimin üstünde hızlı işlem menüsünü göster.
+    showRegionPopup();
   }
   setSelectionUi();
+  saveWsState();
 });
 
 // [TR] "Seçimi Temizle" — bölgeyi ve panel bilgisini sıfırlar.
@@ -938,6 +1668,7 @@ if (btnCancelSelection) {
     clearDraftRect();
     setSelectionUi();
     setRegionInfo(null);
+    saveWsState();
   });
 }
 
@@ -947,6 +1678,7 @@ window.addEventListener("keydown", (evt) => {
     clearDraftRect();
     setSelectionUi();
     setRegionInfo(null);
+    saveWsState();
   }
 });
 
@@ -979,9 +1711,19 @@ btnExtract.addEventListener("click", () => {
 
   // [TR] Sunucu OCR (Tesseract/Paddle) uzun sürebilir — #ocr-status üzerinde spinner gösterilir.
   btnExtract.disabled = true;
+  const ocrController = new AbortController();
   setOcrStatus("info", `OCR is running... (${selectedEngine || "default"})`, {
     loading: true,
   });
+  // [TR] Durum satırına Stop butonu ekle → kullanıcı OCR'ı yarıda kesebilir.
+  if (ocrStatus) {
+    const stop = document.createElement("button");
+    stop.type = "button";
+    stop.className = "btn btn-sm btn-outline-danger ms-2 py-0";
+    stop.textContent = "Stop";
+    stop.addEventListener("click", () => ocrController.abort());
+    ocrStatus.appendChild(stop);
+  }
   fetch(extractUrl, {
     method: "POST",
     headers: {
@@ -989,6 +1731,7 @@ btnExtract.addEventListener("click", () => {
       RequestVerificationToken: antiForgeryToken,
     },
     body: JSON.stringify(payload),
+    signal: ocrController.signal,
   })
     .then((r) => r.json())
     .then((res) => {
@@ -1001,19 +1744,24 @@ btnExtract.addEventListener("click", () => {
       if (btnSaveOcrText) btnSaveOcrText.disabled = !lastOcrResultId;
       setOcrStatus("success", res.message || "OCR completed.");
       if ((res.text || "").trim()) {
+        // [TR] Metni compose alanına düşür (chate YAZMA — işlem ancak fonksiyon
+        //      seçilip çalıştırılınca chate gider). Kaynak "metin" olarak ayarlanır.
         const sourceId = createAiChatSource({ contentText: res.text || "" });
+        textSourceId = sourceId;
         lastOcrChatSourceId = sourceId;
-        appendUserMessage({
-          contentText: res.text || "",
-          reactions: [
-            { kind: "operation", label: "OCR" },
-            { kind: "model", label: selectedEngine || "Default" },
-          ],
-          sourceId,
-        });
+        refreshComposeState({ pulse: true, justAdded: "text" });
+        // [TR] Seçimin üstünde yeşil onay kutusu (OCR başarılı).
+        showRegionToast("OCR done");
       }
+      saveWsStateDebounced();
     })
-    .catch(() => setOcrStatus("error", "An error occurred during the OCR request."))
+    .catch((e) => {
+      if (e?.name === "AbortError") {
+        setOcrStatus("info", "OCR cancelled.");
+        return;
+      }
+      setOcrStatus("error", "An error occurred during the OCR request.");
+    })
     .finally(() => {
       setSelectionUi();
     });
@@ -1082,27 +1830,91 @@ if (btnSelectImage) {
     }
     capturedImage = { base64: captured.base64, mimeType: captured.mimeType };
     showCapturedImagePreview(captured.dataUrl);
+    // [TR] Görseli compose alanına düşür (chate YAZMA). Kaynak "görsel" olur.
     const sourceId = createAiChatSource({
       imageDataUrl: captured.dataUrl,
       imageBase64: captured.base64,
       imageMimeType: captured.mimeType,
-      contentText: ocrTextarea?.value || "",
     });
+    imageSourceId = sourceId;
     lastImageChatSourceId = sourceId;
-    appendUserMessage({
-      imageDataUrl: captured.dataUrl,
-      contentText: ocrTextarea?.value || "",
-      reactions: [{ kind: "operation", label: "Select Image" }],
-      sourceId,
-    });
-    setOcrStatus("success", "Image captured. Use the chat operation buttons to send it with a prompt.");
+    refreshComposeState({ pulse: true, justAdded: "image" });
+    showRegionToast("Image selected");
+    setOcrStatus("success", "Image captured. Pick a function on the left to send it with a prompt.");
+    saveWsStateDebounced();
   });
 }
 
 if (btnClearCapturedImage) {
   btnClearCapturedImage.addEventListener("click", () => {
     clearCapturedImage();
+    imageSourceId = null;
+    if (currentComposeKind === "image") currentComposeKind = null;
+    refreshComposeState();
+    saveWsStateDebounced();
   });
+}
+
+// [TR] Extracted text'i sil (görseldeki Remove gibi) — Expand'in solunda.
+if (btnClearOcrText) {
+  btnClearOcrText.addEventListener("click", () => {
+    setOcrTextExpanded(false);
+    if (ocrTextarea) ocrTextarea.value = "";
+    textSourceId = null;
+    lastOcrResultId = "";
+    if (btnSaveOcrText) btnSaveOcrText.disabled = true;
+    if (currentComposeKind === "text") currentComposeKind = null;
+    refreshComposeState();
+    saveWsStateDebounced();
+  });
+}
+
+// [TR] Compose kartına tıklayınca o kaynağı seç (metin/görsel).
+if (workspaceCompose) {
+  workspaceCompose.addEventListener("click", (ev) => {
+    const sel = ev.target?.closest?.('[data-role="select-source"]');
+    if (!sel) return;
+    setComposeSelection(sel.dataset.kind, { pulse: true });
+  });
+}
+
+// [TR] OCR metni düzenlenince aktif metin kaynağını canlı güncelle + kaydet.
+if (ocrTextarea) {
+  ocrTextarea.addEventListener("input", () => {
+    if (textSourceId && aiChatSources.has(textSourceId)) {
+      aiChatSources.get(textSourceId).text = ocrTextarea.value;
+      updateFnRailEnabled();
+    }
+    saveWsStateDebounced();
+  });
+}
+
+// [TR] Seçili bölgeyi / yakalanan görseli panoya kopyala (+ bildirim).
+async function copyRegionImageToClipboard() {
+  // [TR] Önce anlık seçimi (canvas kırpma), yoksa mevcut yakalanmış görseli kullan.
+  const shot = captureSelectionAsImage();
+  const src = shot || (capturedImagePreview?.src ? { dataUrl: capturedImagePreview.src } : null);
+  if (!src) {
+    setOcrStatus("error", "Select a region first to copy its image.");
+    return false;
+  }
+  try {
+    const blob = await (await fetch(src.dataUrl)).blob();
+    if (navigator.clipboard && window.ClipboardItem) {
+      await navigator.clipboard.write([new ClipboardItem({ [blob.type || "image/png"]: blob })]);
+      setOcrStatus("success", "Image copied to clipboard.");
+      showRegionToast("Copied to clipboard");
+      return true;
+    }
+    throw new Error("Clipboard API unavailable");
+  } catch (e) {
+    setOcrStatus("error", "Clipboard copy is not supported in this browser.");
+    return false;
+  }
+}
+
+if (btnCopyCapturedImage) {
+  btnCopyCapturedImage.addEventListener("click", () => copyRegionImageToClipboard());
 }
 
 if (btnSaveOcrText) {
@@ -1130,22 +1942,15 @@ if (btnSaveOcrText) {
           return;
         }
         const savedText = ocrTextarea.value || "";
-        const updatedOcr = updateAiChatSourceText(lastOcrChatSourceId, savedText);
-        const updatedImage = updateAiChatSourceText(lastImageChatSourceId, savedText);
-        if (!updatedOcr && savedText.trim()) {
-          const sourceId = createAiChatSource({ contentText: savedText });
-          lastOcrChatSourceId = sourceId;
-          appendUserMessage({
-            contentText: savedText,
-            reactions: [
-              { kind: "operation", label: "OCR Updated" },
-              { kind: "style", label: "Saved text" },
-            ],
-            sourceId,
-          });
-        } else if (updatedOcr || updatedImage) {
-          persistAiChat();
+        // [TR] Kaydetme chate balon EKLEMEZ (işlem ancak fonksiyon çalıştırılınca
+        //      chate gider). Sadece metin kaynağını ve varsa mevcut balonları günceller.
+        if (textSourceId && aiChatSources.has(textSourceId)) {
+          aiChatSources.get(textSourceId).text = savedText;
         }
+        updateAiChatSourceText(lastOcrChatSourceId, savedText);
+        updateAiChatSourceText(lastImageChatSourceId, savedText);
+        updateFnRailEnabled();
+        saveWsStateDebounced();
         setOcrStatus("success", res.message || "OCR metni kaydedildi.");
         btnSaveOcrText.disabled = false;
       })
@@ -1166,6 +1971,8 @@ function appendChatNarrationMessage(audioSource, sourceText, savedInfo = {}) {
   const objectUrl = typeof audioSource === "string" ? audioSource : URL.createObjectURL(audioSource);
   const audioEl = new Audio(objectUrl);
   const notebookUrl = savedInfo.aiResultId ? `/Notebook/Details/${encodeURIComponent(savedInfo.aiResultId)}` : "";
+  // [TR] İndirme için dosya adı: kayıt id'si varsa onunla, yoksa zaman damgası.
+  const downloadName = `narration-${savedInfo.aiResultId || Date.now()}.wav`;
   const wrap = document.createElement("div");
   wrap.className = "ai-chat-message ai-chat-message--ai";
   wrap.innerHTML = `
@@ -1181,13 +1988,15 @@ function appendChatNarrationMessage(audioSource, sourceText, savedInfo = {}) {
             <button type="button" class="ai-chat-audio-player__btn" data-role="audio-stop" title="Stop and rewind" aria-label="Stop and rewind">■</button>
             <button type="button" class="ai-chat-audio-player__btn" data-role="audio-replay" title="Replay" aria-label="Replay">↻</button>
             <button type="button" class="ai-chat-audio-player__btn" data-role="audio-forward" title="10 saniye ileri" aria-label="10 saniye ileri">⏭</button>
+            <a class="ai-chat-audio-player__btn ai-chat-audio-player__btn--download" data-role="audio-download" href="${escapeHtml(objectUrl)}" download="${escapeHtml(downloadName)}" title="Download audio file" aria-label="Download audio file">⬇</a>
             <span class="ai-chat-audio-player__time" data-role="audio-time">0:00</span>
           </div>
         </div>
       </div>
       <div class="ai-chat-meta">
         Gemini TTS · ${escapeHtml((sourceText || "").slice(0, 72))}${sourceText && sourceText.length > 72 ? "..." : ""}
-        ${notebookUrl ? ` · <a href="${notebookUrl}">Open in Notebook</a>` : ""}
+        · <a data-role="audio-download-link" href="${escapeHtml(objectUrl)}" download="${escapeHtml(downloadName)}">Download</a>
+        ${notebookUrl ? ` · <a href="${notebookUrl}">Save to Notebook</a>` : ""}
       </div>
     </div>`;
 
@@ -1288,7 +2097,8 @@ async function createNarrationInChat(text, triggerButton = null) {
   }
 
   if (triggerButton) triggerButton.disabled = true;
-  const typingNode = appendAiTypingPlaceholder();
+  const controller = new AbortController();
+  const typingNode = appendAiTypingPlaceholder(controller);
   setOcrStatus("info", "Metin Gemini TTS ile seslendiriliyor...", { loading: true });
   try {
     const r = await fetch(narrateSpeechUrl, {
@@ -1298,6 +2108,7 @@ async function createNarrationInChat(text, triggerButton = null) {
         RequestVerificationToken: antiForgeryToken,
       },
       body: JSON.stringify({ documentId, text: plain }),
+      signal: controller.signal,
     });
     const ct = (r.headers.get("content-type") || "").toLowerCase();
     if (!r.ok) {
@@ -1330,6 +2141,11 @@ async function createNarrationInChat(text, triggerButton = null) {
     appendChatNarrationMessage(audioUrl || blob, plain, { aiResultId, audioUrl });
     clearOcrStatus();
   } catch (e) {
+    if (e?.name === "AbortError") {
+      setOcrStatus("info", "Narration cancelled.");
+      replaceWithAiMessage(typingNode, { text: "⏹ Narration cancelled by user." });
+      return;
+    }
     const msg = e?.message || "An error occurred during the narration request.";
     setOcrStatus("error", msg.length > 240 ? `${msg.slice(0, 240)}...` : msg);
     replaceWithAiMessage(typingNode, { text: msg, isError: true });
@@ -1547,6 +2363,7 @@ btnPrev.addEventListener("click", async () => {
   clearDraftRect();
   setSelectionUi();
   await renderPage(currentPage);
+  saveWsState();
 });
 
 btnNext.addEventListener("click", async () => {
@@ -1555,6 +2372,7 @@ btnNext.addEventListener("click", async () => {
   clearDraftRect();
   setSelectionUi();
   await renderPage(currentPage);
+  saveWsState();
 });
 
 pageInput.addEventListener("change", async () => {
@@ -1566,36 +2384,100 @@ pageInput.addEventListener("change", async () => {
   clearDraftRect();
   setSelectionUi();
   await renderPage(currentPage);
+  saveWsState();
 });
 
 btnZoomIn.addEventListener("click", async () => {
   zoom = Math.min(2.5, zoom + 0.1);
-  clearDraftRect();
   setSelectionUi();
   await renderPage(currentPage);
+  saveWsState();
 });
 
 btnZoomOut.addEventListener("click", async () => {
   zoom = Math.max(0.4, zoom - 0.1);
-  clearDraftRect();
   setSelectionUi();
   await renderPage(currentPage);
+  saveWsState();
 });
 
 btnFit.addEventListener("click", async () => {
-  const frame = document.getElementById("workspace-viewer-frame");
-  if (!pdfDoc || !frame) return;
-  const page = await pdfDoc.getPage(currentPage);
-  const unit = page.getViewport({ scale: 1.0 });
-  zoom = Math.max(0.4, Math.min(2.5, (frame.clientWidth - 8) / unit.width));
-  clearDraftRect();
+  await fitToWidth();
   setSelectionUi();
-  await renderPage(currentPage);
+  saveWsState();
 });
+
+// [TR] PDF kaydırıldıkça (scroll) son konumu kaydet.
+if (viewerFrame) {
+  viewerFrame.addEventListener("scroll", saveWsStateDebounced, { passive: true });
+}
 
 if (btnOpenNativePreview) {
   btnOpenNativePreview.addEventListener("click", () => {
     openNativePreview();
+  });
+}
+
+// ─── CREATIVE (3. tur): GÖRSEL BÜYÜTME (LIGHTBOX) + OCR METNİ GENİŞLET ───────
+const imageLightbox = document.getElementById("image-lightbox");
+const imageLightboxImg = document.getElementById("image-lightbox-img");
+const imageLightboxClose = document.getElementById("image-lightbox-close");
+const btnExpandOcr = document.getElementById("btn-expand-ocr");
+
+function openImageLightbox(src) {
+  if (!imageLightbox || !imageLightboxImg || !src) return;
+  imageLightboxImg.src = src;
+  imageLightbox.classList.remove("d-none");
+}
+function closeImageLightbox() {
+  imageLightbox?.classList.add("d-none");
+  if (imageLightboxImg) imageLightboxImg.src = "";
+}
+
+// [TR] Yakalanan görsele tıklayınca ortada büyük pencerede aç.
+if (capturedImagePreview) {
+  capturedImagePreview.style.cursor = "zoom-in";
+  capturedImagePreview.addEventListener("click", () => openImageLightbox(capturedImagePreview.src));
+}
+if (imageLightboxClose) imageLightboxClose.addEventListener("click", closeImageLightbox);
+if (imageLightbox) {
+  imageLightbox.addEventListener("click", (ev) => {
+    if (ev.target === imageLightbox) closeImageLightbox(); // sadece arka plana tıklayınca kapat
+  });
+}
+window.addEventListener("keydown", (ev) => {
+  if (ev.key === "Escape" && imageLightbox && !imageLightbox.classList.contains("d-none")) {
+    closeImageLightbox();
+  }
+});
+
+// [TR] Sohbetteki görsellere tıklayınca da büyüt.
+if (chatWindow) {
+  chatWindow.addEventListener("click", (ev) => {
+    const img = ev.target?.closest?.(".ai-chat-bubble img");
+    if (img && img.src) openImageLightbox(img.src);
+  });
+}
+
+// [TR] Extracted OCR text alanını yukarı doğru overlay olarak genişlet/daralt.
+function setOcrTextExpanded(expanded) {
+  if (!ocrTextPanel || !workspaceCompose || !btnExpandOcr) return;
+  if (expanded && !ocrTextPanel.classList.contains("d-none")) {
+    workspaceCompose.style.setProperty("--ocr-slot-height", `${ocrTextPanel.offsetHeight}px`);
+    ocrTextPanel.classList.add("compose-source--expanded");
+    btnExpandOcr.textContent = "⤡ Collapse";
+    ocrTextarea?.focus();
+  } else {
+    ocrTextPanel.classList.remove("compose-source--expanded");
+    workspaceCompose.style.removeProperty("--ocr-slot-height");
+    btnExpandOcr.textContent = "⤢ Expand";
+  }
+}
+
+if (btnExpandOcr && ocrTextPanel && workspaceCompose) {
+  btnExpandOcr.addEventListener("click", () => {
+    const willExpand = !ocrTextPanel.classList.contains("compose-source--expanded");
+    setOcrTextExpanded(willExpand);
   });
 }
 
@@ -1609,25 +2491,95 @@ async function init() {
         pdfDoc = null;
       }
     }
-    currentPage = Math.max(1, Math.min(pdfDoc ? pdfDoc.numPages : 1, currentPage));
-    await renderPage(currentPage);
+    // [TR] Önceki oturumdan kayıtlı durum (sayfa/zoom/kaydırma/bölge) varsa geri yükle.
+    const saved = loadWsState();
+    currentPage = Math.max(1, Math.min(pdfDoc ? pdfDoc.numPages : 1, saved?.page || currentPage));
+
+    syncViewerPanRoom();
+    if (saved && Number.isFinite(saved.zoom)) {
+      // [TR] Kayıtlı zoom'u kullan.
+      zoom = Math.max(0.4, Math.min(2.5, saved.zoom));
+      await renderPage(currentPage);
+    } else {
+      // [TR] İlk açılış: PDF'i görünür alana sığdır (fit-to-width).
+      await fitToWidth();
+    }
+
     setSelectionUi();
     setRegionInfo(null);
+
+    // [TR] Kayıtlı kaydırma konumunu ve seçili bölgeyi geri getir.
+    if (saved) {
+      if (viewerFrame) {
+        viewerFrame.scrollLeft = saved.scrollLeft || 0;
+        viewerFrame.scrollTop = saved.scrollTop || 0;
+      }
+      if (saved.region && saved.region.pageNumber === currentPage) {
+        applyRegionNormalized(saved.region);
+        setSelectionUi();
+      }
+
+      // [TR] Kayıtlı extracted text / görsel kaynaklarını geri yükle → kullanıcı
+      //      kaldığı yerden devam eder, fonksiyonlar kilitli olmaz.
+      currentComposeKind = saved.composeKind || null;
+      if (typeof saved.ocrText === "string" && saved.ocrText.length) {
+        if (ocrTextarea) ocrTextarea.value = saved.ocrText;
+        textSourceId = createAiChatSource({ contentText: saved.ocrText });
+        lastOcrChatSourceId = textSourceId;
+        if (saved.ocrResultId) {
+          lastOcrResultId = saved.ocrResultId;
+          if (btnSaveOcrText) btnSaveOcrText.disabled = false;
+        }
+      }
+      if (saved.image && saved.image.dataUrl) {
+        capturedImage = { base64: saved.image.base64, mimeType: saved.image.mime || "image/png" };
+        showCapturedImagePreview(saved.image.dataUrl);
+        imageSourceId = createAiChatSource({
+          imageDataUrl: saved.image.dataUrl,
+          imageBase64: saved.image.base64,
+          imageMimeType: saved.image.mime || "image/png",
+        });
+        lastImageChatSourceId = imageSourceId;
+      }
+    }
+
+    // [TR] Sunucudan gelen başlangıç OCR metni varsa (kayıt yoksa) onu da kaynak yap.
+    if (!textSourceId && ocrTextarea && ocrTextarea.value.trim()) {
+      textSourceId = createAiChatSource({ contentText: ocrTextarea.value });
+      lastOcrChatSourceId = textSourceId;
+    }
+    // [TR] Panelleri/seçimi tazele (pulse yok — sessiz geri yükleme). Tek kaynak
+    //      varsa otomatik seçili → fonksiyonlar kilitli olmaz.
+    refreshComposeState({ pulse: false });
+
     if (lastOcrResultId && btnSaveOcrText) btnSaveOcrText.disabled = false;
     // [TR] Sayfa açılışında varsayılan işlem (Translate) için model listesi yüklenir.
     //      Kullanıcının en çok kullandığı model (defaultModelFromAttr) otomatik seçilir.
     await loadModelsForTask(aiOperation ? aiOperation.value : "Translate");
     if (aiStyle) aiStyle.value = defaultStyle;
+    empty?.classList.add("d-none");
+    warning?.classList.add("d-none");
+    positionResizerHint();
   } catch (err) {
     console.error(err);
-    empty.classList.remove("d-none");
-    showFallbackWarning();
+    // [TR] Yalnızca PDF gerçekten yüklenemediyse uyarı göster; diğer hatalarda
+    //      mavi/sarı banner'lar düzeni bozmasın.
+    if (canvas && canvas.width === 0) {
+      empty?.classList.remove("d-none");
+    }
   }
 }
 
 // [TR] Sekme kapanmadan önce / başka sayfaya gidilirken son durumu yaz (geri tuşu vb.).
 window.addEventListener("pagehide", () => {
   persistAiChat();
+  saveWsState();
+});
+
+// [TR] Pencere yeniden boyutlanınca panel altı kaydırma boşluğunu yenile.
+window.addEventListener("resize", () => {
+  syncViewerPanRoom();
+  positionResizerHint();
 });
 
 attachShowMoreHandler();

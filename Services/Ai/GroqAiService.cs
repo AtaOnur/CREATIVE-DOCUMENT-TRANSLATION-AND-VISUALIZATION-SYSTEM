@@ -133,7 +133,7 @@ public class GroqAiService : IAiService
         var input = req.InputText!.Length > 4000 ? req.InputText[..4000] : req.InputText;
         return await CallAsync(req.ModelName!,
             "You are an expert summarizer. Create a concise, accurate summary. Return ONLY the summary.",
-            $"Summarize the following text:\n\n{input}",
+            $"Summarize the following text:\n\n{input}{LanguageSuffix(req)}",
             ct);
     }
 
@@ -144,8 +144,18 @@ public class GroqAiService : IAiService
             ? $"Rewrite in {req.Style ?? "Formal"} style"
             : req.CustomInstruction;
         return await CallAsync(req.ModelName!,
-            "You are a professional writing assistant. Rewrite text per the user's instruction. Return ONLY the rewritten text.",
-            $"Instruction: {instruction}\n\nText:\n{req.InputText}",
+            """
+            You are a professional rewriting assistant. Rewrite the given text according to the instruction.
+            Output ONLY the rewritten text — no commentary, explanations, analysis, or meta-remarks about the original.
+            Do not quote the original and then comment on it. The rewrite may be shorter or longer as needed.
+            """,
+            $"""
+            Instruction: {instruction}
+            Style: {req.Style ?? "Formal"}
+
+            Source text to rewrite (output only the rewritten version):
+            {req.InputText}{LanguageSuffix(req)}
+            """,
             ct);
     }
 
@@ -153,12 +163,37 @@ public class GroqAiService : IAiService
     private async Task<AiServiceResult> CreativeWriteAsync(AiProcessRequestViewModel req, CancellationToken ct)
     {
         var instruction = string.IsNullOrWhiteSpace(req.CustomInstruction)
-            ? "Expand this text creatively and engagingly"
+            ? "Creatively expand and reimagine the source while keeping its subject and core content"
             : req.CustomInstruction;
         return await CallAsync(req.ModelName!,
-            "You are a creative writer. Generate creative, engaging content based on the given text.",
-            $"Instruction: {instruction}\n\nSource text:\n{req.InputText}",
+            """
+            You are a creative writing assistant. Transform the SOURCE TEXT according to the instruction.
+            The result must be a creative reworking of the source — keep its subject, context, and core content.
+            If the instruction adds themes or topics, weave them into a rewrite OF the source; do not ignore the source and write unrelated new content.
+            Output ONLY the creative text — no explanations.
+            """,
+            $"""
+            Instruction: {instruction}
+            Style: {req.Style ?? "Formal"}
+
+            Source text to transform creatively:
+            {req.InputText}{LanguageSuffix(req)}
+            """,
             ct, maxTokens: 3000);
+    }
+
+    /// <summary>
+    /// [TR] Çeviri dışı işlemlerde cevabın seçilen dilde olmasını zorlayan yönerge.
+    /// "Auto"/boş seçimde dil dayatılmaz; kullanıcı prompt'u kendi dilinde yazsa bile
+    /// cevap seçilen dilde döner.
+    /// </summary>
+    private static string LanguageSuffix(AiProcessRequestViewModel req)
+    {
+        var tgt = req.TargetLanguage;
+        if (string.IsNullOrWhiteSpace(tgt) ||
+            string.Equals(tgt, "Auto", StringComparison.OrdinalIgnoreCase))
+            return string.Empty;
+        return $"\n\nIMPORTANT: Write your entire answer in {tgt}, regardless of the source or instruction language.";
     }
 
     // ─── 4b. AÇIKLAMA / EXPLANATION ────────────────────────────────────────────
@@ -179,12 +214,19 @@ public class GroqAiService : IAiService
             : req.InputText;
 
         return await CallAsync(req.ModelName!,
-            "You are an analytical assistant. Explain the given text in Turkish: " +
-            "(1) identify the content type (e.g. story, grades table, article, code, list), " +
-            "(2) analyze it in detail (count groups/numbers, list characters/dates/places, " +
-            "describe data structure), (3) provide useful inferences. " +
-            "Use short paragraphs and bullet points when helpful.",
-            $"User instruction (priority if any): {instruction}\n\nText to explain:\n{input}",
+            """
+            You are an analytical assistant. Explain the given content clearly in three plain-text sections:
+            Content type, Detailed analysis, Insights.
+            Plain text only — no Markdown: no # headers, no * or ** bullets/bold, no backticks.
+            Use section titles on their own line, then normal paragraphs. Numbered lines (1. 2.) are OK; asterisks are not.
+            If the user instruction asks for a specific focus, follow it while keeping plain readable text.
+            """,
+            $"""
+            User instruction (priority if any): {instruction}
+
+            Text to explain:
+            {input}{LanguageSuffix(req)}
+            """,
             ct, maxTokens: 3000);
     }
 

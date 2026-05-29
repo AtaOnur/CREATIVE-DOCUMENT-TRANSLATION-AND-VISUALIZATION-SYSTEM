@@ -22,23 +22,14 @@
 @model pdf_bitirme.Models.ViewModels.DocumentWorkspaceViewModel
 @{
     ViewData["Title"] = $"{Model.Title} - Workspace";
+    // [TR] Çalışma alanında footer'ı gizle — tüm ekranı kullanabilmek için.
+    ViewData["HideFooter"] = true;
 }
 
-<div class="app-page-header py-3 border-bottom border-light-subtle mb-3">
-    <div class="container d-flex flex-wrap justify-content-between align-items-center gap-2">
-        <div>
-            <h1 class="h4 fw-bold text-app-primary mb-1">Document Workspace</h1>
-            <p class="text-muted small mb-0">@Model.Title · @Model.FileName · @FileSizeFormatter.Format(Model.SizeBytes)</p>
-        </div>
-        <div class="d-flex gap-2">
-            <a class="btn btn-outline-secondary btn-sm" asp-action="Index">← Documents</a>
-            <partial name="_StatusBadge" model="Model.Status" />
-        </div>
-    </div>
-</div>
-
-@* [TR] Çalışma alanı gövdesi: workspace-shell tek kart içinde üst toolbar (ipucu + canlı bölge metrikleri) + iki kolon; sohbet sağ üstte. *@
-<div class="container-fluid workspace-page-container pb-4">
+@* [TR] Başlık + araç çubuğu artık akıştan çıkarıldı; PDF üzerine YÜZEN kompakt
+       bir bar olarak gösteriliyor (aşağıda #workspace-toolbar). Böylece sağdaki
+       chat + fonksiyon paneli en üstteki navbar'a kadar uzanabiliyor. *@
+<div class="container-fluid workspace-page-container pt-0 pb-1">
     @Html.AntiForgeryToken()
     @* data-narrate-speech-url: OCR textarea içeriği JSON { documentId, text } ile NarrateOcrSpeech’e gider → ses (MIME dinamik). *@
     <div class="workspace-shell card border-0 shadow-sm"
@@ -55,63 +46,108 @@
          data-default-style="@Model.DefaultTranslationStyle"
          data-current-page="@Model.CurrentPage"
          data-zoom="@Model.ZoomPercent">
-        <div class="workspace-toolbar border-bottom px-3 py-2 d-flex flex-wrap gap-2 align-items-center">
-            <div class="btn-group btn-group-sm" role="group" aria-label="Sayfa gezinme">
-                <button type="button" class="btn btn-outline-secondary" id="btn-prev-page">Previous</button>
-                <button type="button" class="btn btn-outline-secondary" id="btn-next-page">Sonraki</button>
-            </div>
-            <span class="small text-muted">Sayfa</span>
-            <input id="input-page-number" class="form-control form-control-sm workspace-page-input" type="number" min="1" value="@Model.CurrentPage" />
-            <span class="small text-muted" id="label-page-total">/ @Model.TotalPages</span>
-
-            <div class="vr mx-1"></div>
-
-            <div class="btn-group btn-group-sm" role="group" aria-label="Zoom">
-                <button type="button" class="btn btn-outline-secondary" id="btn-zoom-out">-</button>
-                <button type="button" class="btn btn-outline-secondary" id="btn-zoom-in">+</button>
-                <button type="button" class="btn btn-outline-secondary" id="btn-fit-width">Fit width</button>
-            </div>
-            <span class="small text-muted" id="label-zoom">@Model.ZoomPercent%</span>
-
-            <div class="vr mx-1"></div>
-
-            @* [TR] Bölge seçimi her zaman aktif: PDF üzerinde sol fareye basılı tutarak sürükle.
-               Eski "Bölge Seçimi Başlat / Onayla / İptal" düğmeleri kaldırıldı; bunun yerine
-               kısa bir kullanım ipucu ve seçimi temizlemek için tek bir buton bırakıldı. *@
-            <span class="small text-muted flex-shrink-0">
-                <strong>Tip:</strong> Drag on the PDF to select a region.
-            </span>
-            @* [TR] Seçili dikdörtgen — region-page … region-height (pdf-workspace.mjs setRegionInfo). Eski sağ panel dl kaldırıldı. *@
-            <span id="region-toolbar-metrics-wrap" class="small text-muted workspace-toolbar-region-metrics flex-grow-1" style="min-width: 0;">
-                Sayfa <strong id="region-page">@Model.SelectedRegion.PageNumber</strong>
-                · x <strong id="region-x">@Model.SelectedRegion.X.ToString("F1", System.Globalization.CultureInfo.InvariantCulture)</strong>
-                · y <strong id="region-y">@Model.SelectedRegion.Y.ToString("F1", System.Globalization.CultureInfo.InvariantCulture)</strong>
-                · w <strong id="region-width">@Model.SelectedRegion.Width.ToString("F1", System.Globalization.CultureInfo.InvariantCulture)</strong>
-                · h <strong id="region-height">@Model.SelectedRegion.Height.ToString("F1", System.Globalization.CultureInfo.InvariantCulture)</strong>
-            </span>
-            <button type="button" class="btn btn-sm btn-outline-danger ms-auto flex-shrink-0" id="btn-cancel-selection" disabled>Clear Selection</button>
-        </div>
 
         @*
             [TR] workspace-body: mobilde üst-alt (PDF, sonra sağ panel), lg+ yatay iki sütun.
             [TR] workspace-viewer-area: Sol kolon — yalnızca pdf.js canvas, uyarılar, isteğe bağlı native iframe.
         *@
-        <div class="workspace-body d-flex flex-column flex-lg-row">
-            <div class="workspace-viewer-area flex-grow-1 p-3">
+        @*
+            [TR] YENİ DÜZEN (creative):
+            - PDF arka planda, tüm genişliği kaplar (workspace-viewer-area).
+            - Sağda PDF'in ÜSTÜNE gelen yüzen panel (#workspace-overlay-panel):
+                * sol kenarda mor tutamak (#workspace-panel-resizer) → sürükleyerek sağa/sola genişlet.
+                * dikey fonksiyon rayı (#workspace-fn-rail) → fonksiyonlar yukarıdan aşağıya.
+                * fonksiyona basınca sağına açılan alt fonksiyon penceresi (#workspace-fn-flyout).
+                * sohbet (#ai-chat-window) + altta "compose" alanı (OCR metni / yakalanan görsel buraya gelir).
+            - Bölge seçilince seçimin üstünde çıkan hızlı menü (#region-popup) → OCR ile al / Görsel olarak seç + motor seçimi.
+        *@
+        <div class="workspace-body position-relative" id="workspace-body">
+            <div class="workspace-viewer-area flex-grow-1" id="workspace-viewer-area">
+
+                @* [TR] PDF üzerine YÜZEN kompakt araç çubuğu: dosya bilgisi + sayfa/zoom
+                       + canlı bölge koordinatları + Documents/Status/Clear. Küçük yazıyla
+                       sıkıştırıldı; üstte kalan dikey alan chat/fonksiyonlara bırakıldı. *@
+                <div class="workspace-toolbar workspace-toolbar--dock d-flex flex-wrap gap-2 align-items-center" id="workspace-toolbar">
+                    <a class="btn btn-outline-secondary btn-xs" asp-action="Index" title="Back to documents">← Docs</a>
+                    <span class="workspace-toolbar__title text-truncate" title="@Model.Title · @Model.FileName · @FileSizeFormatter.Format(Model.SizeBytes)">
+                        <strong>@Model.Title</strong> · @Model.FileName · @FileSizeFormatter.Format(Model.SizeBytes)
+                    </span>
+
+                    <span class="vr mx-1"></span>
+
+                    <div class="btn-group btn-group-sm" role="group" aria-label="Sayfa gezinme">
+                        <button type="button" class="btn btn-outline-secondary btn-xs" id="btn-prev-page">‹</button>
+                        <button type="button" class="btn btn-outline-secondary btn-xs" id="btn-next-page">›</button>
+                    </div>
+                    <span class="small text-muted">p.</span>
+                    <input id="input-page-number" class="form-control form-control-sm workspace-page-input" type="number" min="1" value="@Model.CurrentPage" />
+                    <span class="small text-muted" id="label-page-total">/ @Model.TotalPages</span>
+
+                    <span class="vr mx-1"></span>
+
+                    <div class="btn-group btn-group-sm" role="group" aria-label="Zoom">
+                        <button type="button" class="btn btn-outline-secondary btn-xs" id="btn-zoom-out">-</button>
+                        <button type="button" class="btn btn-outline-secondary btn-xs" id="btn-zoom-in">+</button>
+                        <button type="button" class="btn btn-outline-secondary btn-xs" id="btn-fit-width">Fit</button>
+                    </div>
+                    <span class="small text-muted" id="label-zoom">@Model.ZoomPercent%</span>
+
+                    <span class="vr mx-1"></span>
+
+                    @* [TR] Canlı bölge koordinatları (setRegionInfo bunları günceller). *@
+                    <span id="region-toolbar-metrics-wrap" class="small text-muted workspace-toolbar-region-metrics">
+                        S<strong id="region-page">@Model.SelectedRegion.PageNumber</strong>
+                        · x<strong id="region-x">@Model.SelectedRegion.X.ToString("F0", System.Globalization.CultureInfo.InvariantCulture)</strong>
+                        · y<strong id="region-y">@Model.SelectedRegion.Y.ToString("F0", System.Globalization.CultureInfo.InvariantCulture)</strong>
+                        · w<strong id="region-width">@Model.SelectedRegion.Width.ToString("F0", System.Globalization.CultureInfo.InvariantCulture)</strong>
+                        · h<strong id="region-height">@Model.SelectedRegion.Height.ToString("F0", System.Globalization.CultureInfo.InvariantCulture)</strong>
+                    </span>
+
+                    <button type="button" class="btn btn-xs btn-outline-danger" id="btn-cancel-selection" disabled>Clear</button>
+                    <span class="workspace-toolbar__status"><partial name="_StatusBadge" model="Model.Status" /></span>
+                </div>
+
                 @*
                     [TR] Canvas + overlay + seçim dikdörtgeni ayrı bir wrap içinde tutulur.
                     Sebep: Zoom ile canvas büyüdüğünde frame (scroll konteyneri) olduğu gibi
-                    kalır ama wrap (içerik) büyür. Böylece kullanıcı her yöne (yukarı/aşağı/
-                    sol/sağ) kaydırabilir. Overlay ve rect wrap içinde absolute positioned
-                    olduğu için, koordinatlar wrap'in sol-üst köşesine göre tutarlıdır —
-                    eski "center + transform" yaklaşımında koordinatlar kayarken şimdi
-                    rect tam mouse'un olduğu yerden başlar.
+                    kalır ama wrap (içerik) büyür. Böylece kullanıcı her yöne kaydırabilir.
                 *@
                 <div class="workspace-viewer-frame" id="workspace-viewer-frame">
                     <div class="workspace-viewer-canvas-wrap" id="workspace-viewer-canvas-wrap">
                         <canvas id="pdf-canvas" class="workspace-pdf-canvas"></canvas>
                         <div id="region-overlay" class="workspace-region-overlay"></div>
                         <div id="region-rect" class="workspace-region-rect d-none"></div>
+
+                        @* [TR] Seçili bölgenin üstünde çıkan hızlı işlem menüsü (görsel 2 & 4). *@
+                        <div id="region-popup" class="region-popup d-none" role="toolbar" aria-label="Region actions">
+                            @* [TR] İşlem başarılı olunca popup'ın hemen ÜSTÜNDE beliren yeşil onay kutusu. *@
+                            <div id="region-toast" class="region-toast d-none" aria-live="polite">
+                                <span class="region-toast__tick" aria-hidden="true">✓</span>
+                                <span id="region-toast-text">Done</span>
+                            </div>
+                            <div class="region-popup__actions">
+                                <button type="button" class="region-popup__btn" data-region-action="extract">
+                                    <span aria-hidden="true">🔤</span> Extract text (OCR)
+                                </button>
+                                <button type="button" class="region-popup__btn" data-region-action="image">
+                                    <span aria-hidden="true">🏞️</span> Select as image
+                                </button>
+                                <button type="button" class="region-popup__btn" data-region-action="copy">
+                                    <span aria-hidden="true">📋</span> Copy image to clipboard
+                                </button>
+                            </div>
+                            <div class="region-popup__engines">
+                                <div class="region-popup__engines-label">How should the text be read?</div>
+                                <button type="button" class="region-engine-opt is-active" data-engine="Paddle">
+                                    <span class="region-engine-opt__name">PaddleOCR</span>
+                                    <span class="region-engine-opt__desc">Detects the region better</span>
+                                </button>
+                                <button type="button" class="region-engine-opt" data-engine="Tesseract">
+                                    <span class="region-engine-opt__name">Tesseract</span>
+                                    <span class="region-engine-opt__desc">Faster, medium-quality result</span>
+                                </button>
+                            </div>
+                        </div>
                     </div>
                 </div>
                 <div id="workspace-viewer-warning" class="alert alert-info mt-3 d-none">
@@ -132,103 +168,145 @@
             </div>
 
             @*
-                [TR] Sağ kolon: üstte AI Sohbet (eski “Seçili Bölge Bilgisi” dikey alanı), altında OCR + AI İşlem.
-                    Koordinatlar üst workspace-toolbar’da (#region-page … #region-height).
+                [TR] PDF üstünde yüzen, sola/sağa genişletilebilir panel.
+                Rail + flyout + sohbet + compose alanı burada.
             *@
-            <aside class="workspace-side-panel border-top border-lg-start p-3" id="workspace-side-panel">
-                @* [TR] AI Sohbet: bölge dl’sinin yerinde; yükseklik site.css ile sınırlı (iç scroll). *@
-                <div class="ai-chat-section ai-chat-section--side-panel card border-0 shadow-sm w-100 mb-3">
-                    <div class="ai-chat-header d-flex justify-content-between align-items-center px-3 py-2 border-bottom">
-                        <h2 class="h6 fw-bold mb-0">AI Chat</h2>
-                        <div class="d-flex gap-2 align-items-center">
-                            <span class="small text-muted" id="ai-chat-count">0 mesaj</span>
-                            <button type="button" class="btn btn-sm btn-outline-secondary" id="btn-clear-chat" title="Sohbeti temizle">Temizle</button>
+            <div class="workspace-overlay-panel" id="workspace-overlay-panel">
+                <div class="workspace-panel-resizer" id="workspace-panel-resizer"
+                     role="separator" aria-orientation="vertical" aria-label="Resize panel"
+                     title="Paneli genişletmek için sürükle">
+                    @* [TR] Mor çubuk üzerinde ↔ ipucu — Creative ile Explain arasına JS ile hizalanır. *@
+                    <div class="workspace-panel-resizer__hint" id="workspace-panel-resizer-hint" aria-hidden="true">
+                        <span>↔</span>
+                    </div>
+                </div>
+
+                @* [TR] Dikey fonksiyon rayı — JS tarafından AI_CHAT_OPERATION_DEFS'ten doldurulur. *@
+                <nav class="workspace-fn-rail" id="workspace-fn-rail" aria-label="AI functions"></nav>
+
+                @* [TR] Fonksiyona basınca sağına açılan alt fonksiyon penceresi. *@
+                <div class="workspace-fn-flyout d-none" id="workspace-fn-flyout" aria-label="Function options"></div>
+
+                <aside class="workspace-side-panel" id="workspace-side-panel">
+                    @* [TR] AI Sohbet: WhatsApp tarzı balonlar + reaksiyon çipleri korunur. *@
+                    <div class="ai-chat-section ai-chat-section--side-panel card border-0 shadow-sm w-100">
+                        @* [TR] Olabildiğince kompakt başlık → mesaj alanına daha çok dikey yer. *@
+                        <div class="ai-chat-header ai-chat-header--compact d-flex justify-content-between align-items-center px-2 border-bottom">
+                            <h2 class="ai-chat-header__title fw-bold mb-0">AI Chat</h2>
+                            <div class="d-flex gap-1 align-items-center">
+                                <span class="text-muted" id="ai-chat-count">0</span>
+                                <button type="button" class="btn btn-outline-secondary ai-chat-header__clear" id="btn-clear-chat" title="Sohbeti temizle">Temizle</button>
+                            </div>
+                        </div>
+                        <div class="ai-chat-window" id="ai-chat-window" aria-live="polite">
+                            <div class="ai-chat-empty text-center text-muted small p-4" id="ai-chat-empty">
+                                No messages yet. Hold down the mouse button on the PDF and drag to draw a region,
+                                then choose <strong>Extract text</strong> or <strong>Select as image</strong>.
+                            </div>
                         </div>
                     </div>
-                    <div class="ai-chat-window" id="ai-chat-window" aria-live="polite">
-                        <div class="ai-chat-empty text-center text-muted small p-4" id="ai-chat-empty">
-                            No messages yet. Extract text or select an image to show operation buttons here.
+
+                    @*
+                        [TR] COMPOSE alanı = sohbetin "yazı yazma" kısmının karşılığı.
+                        Projede serbest sohbet girişi yok; bunun yerine bölge seçip
+                        "Extract text" / "Select as image" deyince içerik buraya düşer.
+                        Soldaki fonksiyon rayından bir işlem seçilince bu içerik kullanılır.
+                    *@
+                    <div class="workspace-compose" id="workspace-compose">
+                        <div class="workspace-compose__empty" id="workspace-compose-empty">
+                            Hold down the mouse button on the PDF and drag to select a region.
+                            Then choose <strong>Extract text</strong> or <strong>Select as image</strong> —
+                            the captured content appears here and the functions on the left become available.
+                        </div>
+
+                        @* [TR] OCR/kayıt/TTS durum satırı (spinner). *@
+                        <div id="ocr-status" class="small mb-2 d-none"></div>
+
+                        @* [TR] İki kaynak (metin / görsel) seçilebilir kart. Hangisine
+                               basılırsa o "aktif kaynak" olur ve fonksiyonlar onun üzerinde
+                               çalışır. Tek kaynak varsa otomatik seçili; ikisi varsa kullanıcı seçer. *@
+
+                        @* GÖRSEL kaynağı *@
+                        <div id="captured-image-panel" class="compose-source d-none" data-kind="image">
+                            <div class="compose-source__head">
+                                <button type="button" class="compose-source__select" data-role="select-source" data-kind="image">
+                                    <span class="compose-source__radio" aria-hidden="true"></span>
+                                    <span class="compose-source__title">🖼️ Selected image</span>
+                                </button>
+                                <div class="compose-source__tools">
+                                    <button type="button" class="btn btn-link btn-sm p-0 text-danger" id="btn-clear-captured-image" title="Delete image">🗑 Delete</button>
+                                    <button type="button" class="btn btn-link btn-sm p-0 text-decoration-none" id="btn-copy-captured-image" title="Copy image to clipboard">⧉ Copy</button>
+                                </div>
+                            </div>
+                            <div class="compose-source__hint">Click the image to enlarge ⤢</div>
+                            <img id="captured-image-preview" alt="Captured region" class="img-fluid rounded border workspace-zoomable-img" data-role="zoom-image" />
+                        </div>
+
+                        @* METİN kaynağı *@
+                        <div id="ocr-text-panel" class="compose-source d-none" data-kind="text">
+                            <div class="compose-source__head">
+                                <button type="button" class="compose-source__select" data-role="select-source" data-kind="text">
+                                    <span class="compose-source__radio" aria-hidden="true"></span>
+                                    <span class="compose-source__title">📝 Extracted text <span class="text-muted fw-normal">(editable)</span></span>
+                                </button>
+                                <div class="compose-source__tools">
+                                    <button type="button" class="btn btn-link btn-sm p-0 text-danger" id="btn-clear-ocr-text" title="Delete text">🗑 Delete</button>
+                                    <button type="button" class="btn btn-link btn-sm p-0 text-decoration-none" id="btn-save-ocr-text" disabled title="Save text">💾 Save text</button>
+                                    <button type="button" class="btn btn-link btn-sm p-0 text-decoration-none" id="btn-expand-ocr" title="Expand / collapse">⤢ Expand</button>
+                                </div>
+                            </div>
+                            <textarea id="ocr-text-placeholder"
+                                      class="form-control workspace-ocr-text"
+                                      rows="3"
+                                      placeholder="OCR output will appear here after you extract a region."
+                            >@Model.OcrTextPlaceholder</textarea>
                         </div>
                     </div>
-                </div>
 
-                @* OCR dil seçimi kaldırıldı; PaddleOCR dili otomatik algılar *@
-                @*
-                    [TR] İki aksiyon yan yana:
-                    - "Metni Çıkar"  → seçili bölge üzerinde OCR yapar (mevcut akış).
-                    - "Görsel Seç"  → seçili bölgeyi PNG olarak yakalar; AI'ya prompt
-                                       ile birlikte multimodal girdi olarak gönderilir.
-
-                    [TR] OCR Motoru seçimi: kullanıcı her istek için Tesseract veya
-                    PaddleOCR kullanmayı seçebilir. Varsayılan appsettings → Ocr:Provider'dır.
-                *@
-                <div class="ocr-tools-compact mb-2">
-                    <label class="form-label small mb-1" for="ocr-engine">OCR Motoru</label>
-                    <select id="ocr-engine" class="form-select form-select-sm">
-                        <option value="Tesseract">Tesseract (Fast, easy setup)</option>
-                        <option value="Paddle">PaddleOCR (More accurate, multilingual)</option>
-                    </select>
-                </div>
-                <div class="d-grid gap-2 mb-2">
-                    <button type="button" class="btn btn-accent" id="btn-extract-text" disabled>Extract Text</button>
-                    <button type="button" class="btn btn-outline-primary" id="btn-select-image" disabled>Select Image</button>
-                </div>
-                @* [TR] OCR işlem satırı: pdf-workspace.mjs setOcrStatus(..., { loading: true }) ile “Metni Çıkar” / TTS / kayıt sırasında spinner + metin.
-                      Seslendirme sonrası ses bitince clearOcrStatus() bu satırı gizler (yazı kalıntısı kalmaz). *@
-                <div id="ocr-status" class="small mb-2 d-none"></div>
-
-                @* [TR] "Görsel Seç" ile yakalanan bölgenin önizlemesi.
-                       Görsel varken AI isteğine multimodal olarak eklenir. *@
-                <div id="captured-image-panel" class="mb-3 d-none">
-                    <div class="d-flex justify-content-between align-items-center mb-1">
-                        <label class="form-label small fw-medium mb-0">Captured Image</label>
-                        <button type="button" class="btn btn-link btn-sm p-0 text-danger" id="btn-clear-captured-image">Remove</button>
+                    @* [TR] Görünmez destek kontrolleri:
+                           - #ocr-engine: bölge popup'ı tarafından sürülür (varsayılan Paddle).
+                           - #btn-extract-text / #btn-select-image: popup butonları bunları tetikler (mevcut akış korunur).
+                           - ai-* select'ler: model listesi / varsayılan stil için pdf-workspace.mjs kullanır. *@
+                    <div class="d-none" aria-hidden="true">
+                        <select id="ocr-engine">
+                            <option value="Paddle" selected>PaddleOCR</option>
+                            <option value="Tesseract">Tesseract</option>
+                        </select>
+                        <button type="button" id="btn-extract-text" disabled>Extract Text</button>
+                        <button type="button" id="btn-select-image" disabled>Select Image</button>
+                        <select id="ai-operation">
+                            <option value="Translate">Translate</option>
+                            <option value="Summarize">Summarize</option>
+                            <option value="Rewrite">Rewrite</option>
+                            <option value="CreativeWrite">Creative Write</option>
+                            <option value="Visualize">Visualize</option>
+                            <option value="Math">Math / Grafik</option>
+                            <option value="Explanation">Explanation</option>
+                        </select>
+                        <select id="ai-model" data-default-model="@Model.DefaultAiModel">
+                            <option value="">Loading...</option>
+                        </select>
+                        <select id="ai-target-language">
+                            <option value="English" selected>English</option>
+                        </select>
+                        <select id="ai-style">
+                            <option value="Formal" selected='@(Model.DefaultTranslationStyle == "Formal")'>Formal</option>
+                            <option value="Academic" selected='@(Model.DefaultTranslationStyle == "Academic")'>Academic</option>
+                            <option value="Simplified" selected='@(Model.DefaultTranslationStyle == "Simplified")'>Simplified</option>
+                        </select>
                     </div>
-                    <img id="captured-image-preview" alt="Captured region" class="img-fluid rounded border" />
-                    <div class="small text-muted mt-1">
-                        This image will be sent to the model with the prompt during AI processing.
-                    </div>
-                </div>
-
-                <label for="ocr-text-placeholder" class="form-label small fw-medium">OCR Metni (duzenlenebilir)</label>
-                <textarea id="ocr-text-placeholder"
-                          class="form-control workspace-ocr-text"
-                          rows="3"
-                          placeholder="OCR output will appear here in the next step. You can edit it manually."
-                >@Model.OcrTextPlaceholder</textarea>
-                <button type="button" class="btn btn-outline-secondary btn-sm mt-2 w-100" id="btn-save-ocr-text" disabled>
-                    Save OCR Text
-                </button>
-
-                @* [TR] Chat operasyonları için görünmez destek alanı:
-                       Harici AI işlem/TTS menüsü kaldırıldı; bu select'ler yalnızca pdf-workspace.mjs'in
-                       model listesini ve varsayılan stil bilgisini chat balonu içinde kullanması için tutulur. *@
-                <div class="d-none" aria-hidden="true">
-                    <select id="ai-operation">
-                        <option value="Translate">Translate</option>
-                        <option value="Summarize">Summarize</option>
-                        <option value="Rewrite">Rewrite</option>
-                        <option value="CreativeWrite">Creative Write</option>
-                        <option value="Visualize">Visualize</option>
-                        <option value="Math">Math / Grafik</option>
-                        <option value="Explanation">Explanation</option>
-                    </select>
-                    <select id="ai-model" data-default-model="@Model.DefaultAiModel">
-                        <option value="">Loading...</option>
-                    </select>
-                    <select id="ai-target-language">
-                        <option value="English" selected>English</option>
-                    </select>
-                    <select id="ai-style">
-                        <option value="Formal" selected='@(Model.DefaultTranslationStyle == "Formal")'>Formal</option>
-                        <option value="Academic" selected='@(Model.DefaultTranslationStyle == "Academic")'>Academic</option>
-                        <option value="Simplified" selected='@(Model.DefaultTranslationStyle == "Simplified")'>Simplified</option>
-                    </select>
-                </div>
-            </aside>
+                </aside>
+            </div>
         </div>
     </div>
 
+</div>
+
+@* [TR] Görsel büyütme penceresi (lightbox): yakalanan görsele veya sohbetteki
+       görsele tıklanınca ekranın ortasında büyük olarak açılır. *@
+<div id="image-lightbox" class="image-lightbox d-none" role="dialog" aria-modal="true" aria-label="Image preview">
+    <button type="button" class="image-lightbox__close" id="image-lightbox-close" aria-label="Close">×</button>
+    <img id="image-lightbox-img" class="image-lightbox__img" alt="Enlarged preview" />
 </div>
 
 @section Scripts {
