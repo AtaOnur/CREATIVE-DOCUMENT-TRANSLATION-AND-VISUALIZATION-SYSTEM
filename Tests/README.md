@@ -13,12 +13,19 @@ Tests/
 │   ├── TestHostEnvironment.cs       # IWebHostEnvironment için sahte (geçici klasör)
 │   ├── TestAuthHandler.cs           # WebApplicationFactory için cookie auth bypass
 │   ├── TestWebApplicationFactory.cs # Program.cs'i test ortamında ayağa kaldırır
+│   ├── DocumentServiceTestContext.cs # DocumentService birim test DB'si
+│   ├── TestDatabaseSeeder.cs        # HTTP testleri için seed verisi
 │   └── HuggingFaceServiceBuilder.cs # Tek satırda HuggingFaceAiService kurar
 ├── UnitTests/
-│   └── HuggingFaceAiServiceTests.cs    # Servis seviyesi (8 test)
+│   ├── HuggingFaceAiServiceTests.cs       # AI servis (9 test)
+│   ├── HuggingFaceEdgeCaseTests.cs        # Edge case + çoklu dil (10 + Theory)
+│   └── DocumentServiceFeatureTests.cs     # Ban, rehber, admin sonuç (9 test)
 ├── IntegrationTests/
-│   ├── AiControllerIntegrationTests.cs # Controller + Service birlikte (5 test)
-│   └── AiControllerHttpTests.cs        # WebApplicationFactory ile HTTP-level (3 test)
+│   ├── AiControllerIntegrationTests.cs    # AI controller + servis (5 test)
+│   ├── AiControllerHttpTests.cs           # HTTP-level AI (3 test)
+│   ├── AiControllerAdminResultTests.cs    # Admin Open Result (3 test)
+│   ├── DocumentsControllerIntegrationTests.cs  # Ban + rehber kapatma (2 test)
+│   └── DocumentsControllerHttpTests.cs    # HTTP-level Documents (2 test)
 ├── FunctionalTests/
 │   └── AiUserFlowTests.cs              # Gerçek kullanıcı akışı (5 test)
 └── NonFunctionalTests/

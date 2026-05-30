@@ -20,7 +20,7 @@ namespace pdf_bitirme.Tests;
    piramidi uyguladım: birim testler servis davranışını, entegrasyon testleri
    controller-servis etkileşimini, fonksiyonel testler kullanıcı akışlarını,
    fonksiyonel olmayan testler ise performans ve dayanıklılığı doğruluyor.
-   Toplam 28 test, hiçbir dış API çağrısı yapmadan ortalama 1.9 saniyede
+   Toplam 61 test, hiçbir dış API çağrısı yapmadan ortalama ~2 saniyede
    tamamlanıyor — bu da CI/CD entegrasyonu için endüstri standardına uygun
    bir geri bildirim süresidir.
 
@@ -67,55 +67,49 @@ namespace pdf_bitirme.Tests;
   └──────────────────────────────────────────┴──────────────────────────────────┘
 
 
- ─── 3. TEST PİRAMİDİ (28 TEST / ~1.9 sn) ───────────────────────────────────────
+ ─── 3. TEST PİRAMİDİ (61 TEST / ~2 sn) ───────────────────────────────────────
 
                           ┌────────────────────────┐
-                          │   NonFunctional (7)    │  ← perf + dayanıklılık
+                          │   NonFunctional (6)    │  ← perf + dayanıklılık
                           └────────────────────────┘
                     ┌──────────────────────────────────┐
                     │      Functional Tests (5)        │  ← kullanıcı akışı
                     └──────────────────────────────────┘
               ┌────────────────────────────────────────────┐
-              │         Integration Tests (5 + 3)          │  ← controller + servis
+              │         Integration Tests (15)             │  ← controller + HTTP
               └────────────────────────────────────────────┘
         ┌──────────────────────────────────────────────────────┐
-        │              Unit Tests (8)                          │  ← saf metot davranışı
+        │              Unit Tests (35)                         │  ← AI + DocumentService
         └──────────────────────────────────────────────────────┘
 
 
  ─── 4. KATMAN KATMAN TANITIM ───────────────────────────────────────────────────
 
-  ► UNIT TESTS — UnitTests/HuggingFaceAiServiceTests.cs (8 test)
-    Amaç: HuggingFaceAiService sınıfının bağımsız davranışı.
-    Hiçbir dış bağımlılık (HTTP, dosya sistemi, DB) gerçek değildir.
-    Senaryolar:
-      1) Translate_WithNormalInput_ReturnsTranslatedText           → happy path
-      2) Translate_WithEmptyInput_ReturnsPlaceholderAndSkipsHttp   → boşsa HTTP atılmaz
-      3) Summarize_WithNormalInput_ReturnsShorterSummary           → boyut kontrolü
-      4) Rewrite_WithCustomInstruction_PassesInstructionToModel    → yönerge prompt'a yansır
-      5) CreativeWrite_WithSourceText_ReturnsCreativeOutput
-      6) Visualize_WithImageBytes_WritesFileAndReturnsUrl          → diske yazıp URL döndürür
-      7) Process_WithInvalidOperationType_ReturnsUnsupportedMessage
-      8) Process_WhenApiReturns500_ThrowsInvalidOperationException
-      9) Translate_WhenContentIsArrayOfObjects_StillExtractsText   → multimodal dayanıklılık
+  ► UNIT TESTS
+    A) HuggingFaceAiServiceTests.cs — AI servis davranışı (11 test)
+    B) HuggingFaceEdgeCaseTests.cs — hata/edge case (11 test + Theory)
+    C) DocumentServiceFeatureTests.cs — ban, workspace rehberi, admin AI sonucu (9 test)
+       Senaryolar:
+         - GetOwnerDocumentAccessAsync: NotFound / Banned / Allowed
+         - ShowWorkspaceGuide: ilk belge true, ikinci belge false, tamamlanmışsa false
+         - MarkWorkspaceGuideCompletedAsync kalıcı işaret
+         - GetAiResultPageByIdAsync sahiplik filtresi olmadan döner
+         - GetAiResultPageAsync başka kullanıcının sonucu null
 
-  ► INTEGRATION TESTS — iki katman
+  ► INTEGRATION TESTS — dört katman
 
-    A) Controller-level (AiControllerIntegrationTests.cs, 5 test)
-       Controller, IDocumentService mock + gerçek HuggingFaceAiService +
-       IOptions ile birlikte çalışır. ASP.NET Core MVC pipeline'ı hariç
-       tüm bileşenler gerçektir.
-
-    B) HTTP-level (AiControllerHttpTests.cs, 3 test)
-       Tüm middleware + routing + auth pipeline'ı çalıştırılır.
-       Gerçek HTTP istekleri in-memory test server'a yapılır.
+    A) Controller-level AI (AiControllerIntegrationTests.cs, 5 test)
+    B) HTTP-level AI (AiControllerHttpTests.cs, 3 test)
+    C) Documents moderasyon/rehber (DocumentsControllerIntegrationTests.cs, 2 test)
+    D) Admin AI sonuç görüntüleme (AiControllerAdminResultTests.cs, 3 test)
+    E) HTTP-level Documents (DocumentsControllerHttpTests.cs, 2 test)
 
   ► FUNCTIONAL TESTS — AiUserFlowTests.cs (5 test)
     Amaç: "Kod çalışıyor mu?" yerine
           "Kullanıcı için anlamlı çıktı oluşuyor mu?"
     Örn: Özet, kaynak metinden GERÇEKTEN kısa mı?
 
-  ► NON-FUNCTIONAL TESTS — PerformanceAndFailureTests.cs (7 test)
+  ► NON-FUNCTIONAL TESTS — PerformanceAndFailureTests.cs (6 test)
     - Performans: <500 ms tek istek; 10 paralel <2 sn
     - Dayanıklılık: 503/401/network down/cancellation token
 
@@ -156,10 +150,10 @@ namespace pdf_bitirme.Tests;
       hibrit yaklaşım uygulanmıştır.
 
    Q: "Test piramidi mi, buz konisi mi?"
-   A: Piramit: 8 unit > 8 integration > 5 functional > 7 NFR.
+   A: Piramit: 35 unit > 15 integration > 5 functional > 6 NFR.
       Piramit oranı sağlıklı; üst seviyelerde aşırı test yok.
 
-   Q: "Niye 28 test sadece ~2 saniye sürüyor?"
+   Q: "Niye 61 test sadece ~2 saniye sürüyor?"
    A: Hiçbir IO yok + paralel xUnit runner + mock'lanmış HttpClient →
       endüstri kabul kriteri ("birim testler <100 ms") uygulandı.
 
@@ -210,7 +204,7 @@ namespace pdf_bitirme.Tests;
 internal static class TestSuiteOverview
 {
     /// <summary>Toplam test sayısı (referans için sabit).</summary>
-    public const int TotalTests = 28;
+    public const int TotalTests = 61;
 
     /// <summary>Hedef toplam çalışma süresi (saniye, referans).</summary>
     public const double TargetRuntimeSeconds = 2.0;

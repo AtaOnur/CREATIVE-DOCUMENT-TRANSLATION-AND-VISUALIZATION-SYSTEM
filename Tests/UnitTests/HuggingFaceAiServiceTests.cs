@@ -127,7 +127,7 @@ public class HuggingFaceAiServiceTests
 
         var result = await svc.ProcessAsync("Doc", req);
 
-        Assert.Contains("boş", result.OutputText, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("empty", result.OutputText, StringComparison.OrdinalIgnoreCase);
         Assert.Empty(mock.CapturedRequests);
     }
 
@@ -243,7 +243,7 @@ public class HuggingFaceAiServiceTests
 
         var result = await svc.ProcessAsync("Doc", req);
 
-        Assert.Contains("Desteklenmeyen işlem", result.OutputText);
+        Assert.Contains("Unsupported operation", result.OutputText, StringComparison.OrdinalIgnoreCase);
         Assert.Empty(mock.CapturedRequests);   // hiçbir HTTP isteği atılmamalı
     }
 

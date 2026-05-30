@@ -264,7 +264,7 @@ public class HuggingFaceEdgeCaseTests
             () => svc.ProcessAsync("Doc", req));
 
         // [TR] Servis tüm exception'ları "HuggingFace hatası: ..." prefixiyle wrap eder.
-        Assert.Contains("HuggingFace hatası", ex.Message);
+        Assert.Contains("HuggingFace error", ex.Message, StringComparison.OrdinalIgnoreCase);
 
         // [TR] İç istisna gerçek timeout türünü korumalı (debug için).
         Assert.NotNull(ex.InnerException);
@@ -316,7 +316,7 @@ public class HuggingFaceEdgeCaseTests
         var ex = await Assert.ThrowsAsync<InvalidOperationException>(
             () => svc.ProcessAsync("Doc", req));
 
-        Assert.Contains("HuggingFace hatası", ex.Message);
+        Assert.Contains("HuggingFace error", ex.Message, StringComparison.OrdinalIgnoreCase);
         Assert.NotNull(ex.InnerException);
         // [TR] İç hata bir JSON parse hatası olmalı.
         Assert.Contains("JSON", ex.InnerException!.GetType().Name, StringComparison.OrdinalIgnoreCase);
@@ -359,7 +359,7 @@ public class HuggingFaceEdgeCaseTests
         var ex = await Assert.ThrowsAsync<InvalidOperationException>(
             () => svc.ProcessAsync("Doc", MakeRequest("Translate", "Hello")));
 
-        Assert.Contains("HuggingFace hatası", ex.Message);
+        Assert.Contains("HuggingFace error", ex.Message, StringComparison.OrdinalIgnoreCase);
     }
 
     /// <summary>
