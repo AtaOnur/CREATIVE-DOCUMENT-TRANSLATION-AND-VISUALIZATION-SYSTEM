@@ -43,7 +43,10 @@ public class GeminiTtsSpeechService : IGeminiTtsSpeechService
     }
 
     /// <inheritdoc />
-    public async Task<GeminiSpeechSynthesisResult> SynthesizeAsync(string plainText, CancellationToken cancellationToken = default)
+    public async Task<GeminiSpeechSynthesisResult> SynthesizeAsync(
+        string plainText,
+        string? languageCode = null,
+        CancellationToken cancellationToken = default)
     {
         if (string.IsNullOrWhiteSpace(_opt.ApiKey))
             throw new InvalidOperationException("Gemini API key is missing (Ai:Gemini:ApiKey or User Secrets).");
@@ -58,7 +61,9 @@ public class GeminiTtsSpeechService : IGeminiTtsSpeechService
             : _opt.TtsModel.Trim();
 
         var voice = string.IsNullOrWhiteSpace(_opt.TtsVoiceName) ? "Kore" : _opt.TtsVoiceName.Trim();
-        var lang = string.IsNullOrWhiteSpace(_opt.TtsLanguageCode) ? null : _opt.TtsLanguageCode.Trim();
+        var lang = !string.IsNullOrWhiteSpace(languageCode)
+            ? languageCode.Trim()
+            : string.IsNullOrWhiteSpace(_opt.TtsLanguageCode) ? null : _opt.TtsLanguageCode.Trim();
 
         var url = $"{_opt.BaseUrl.TrimEnd('/')}/{model}:generateContent?key={Uri.EscapeDataString(_opt.ApiKey)}";
 

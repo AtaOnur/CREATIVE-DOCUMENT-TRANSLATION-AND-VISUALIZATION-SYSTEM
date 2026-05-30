@@ -979,6 +979,31 @@ label[for="ocr-text-placeholder"] {
   border: 1px solid rgba(15, 61, 76, 0.08);
 }
 
+.ai-chat-bubble--error {
+  background: #fee2e2 !important;
+  border-color: #fecaca !important;
+  color: #7f1d1d !important;
+}
+
+.ai-chat-error-dismiss {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.2rem;
+  margin-top: 0.35rem;
+  border: 1px solid #fecaca;
+  background: #fff;
+  color: #991b1b;
+  font-size: 0.68rem;
+  font-weight: 600;
+  padding: 0.16rem 0.55rem;
+  border-radius: 999px;
+  cursor: pointer;
+}
+
+.ai-chat-error-dismiss:hover {
+  background: #fef2f2;
+}
+
 .ai-chat-bubble img {
   max-width: 100%;
   max-height: 280px;
@@ -1148,59 +1173,242 @@ label[for="ocr-text-placeholder"] {
   margin-top: 0.65rem;
 }
 
-/* [TR] Chat içi TTS çıktı oynatıcısı: ses cevabı AI balonu olarak kalır;
-       blob URL kalıcı olmadığı için sohbet localStorage persist'inde filtrelenir. */
-.ai-chat-audio-player {
-  min-width: min(100%, 280px);
+/* [TR] WhatsApp tarzı ses mesajı — beyaz zemin, gerçek dalga, playhead, ses seviyesi. */
+.ai-chat-voice-msg {
+  background: #fff;
+  border: 1px solid rgba(15, 61, 76, 0.14);
+  border-radius: 0.85rem 0.85rem 0.85rem 0.25rem;
+  padding: 0.55rem 0.65rem 0.5rem;
+  min-width: min(100%, 320px);
+  max-width: 100%;
+  box-shadow: 0 1px 3px rgba(15, 61, 76, 0.06);
 }
 
-.ai-chat-audio-player__title {
-  font-size: 0.78rem;
-  font-weight: 700;
-  color: var(--app-primary);
-  margin-bottom: 0.45rem;
+.ai-chat-voice-msg--broken {
+  opacity: 0.72;
 }
 
-.ai-chat-audio-player__controls {
-  display: inline-flex;
+.ai-chat-voice-msg__row {
+  display: flex;
   align-items: center;
-  gap: 0.35rem;
-  padding: 0.25rem 0.4rem;
-  border-radius: 0.3rem;
-  background: #171717;
-  color: #fff;
+  gap: 0.55rem;
 }
 
-.ai-chat-audio-player__btn {
-  width: 1.65rem;
-  height: 1.65rem;
-  padding: 0;
-  border: 0;
-  border-radius: 0.2rem;
-  background: transparent;
-  color: rgba(255, 255, 255, 0.86);
+.ai-chat-voice-msg__play {
+  flex: 0 0 auto;
+  width: 2.15rem;
+  height: 2.15rem;
+  border: 1px solid rgba(15, 61, 76, 0.14);
+  border-radius: 50%;
+  background: #fff;
+  color: #111;
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  font-size: 0.86rem;
+  cursor: pointer;
+}
+
+.ai-chat-voice-msg__play:hover {
+  background: #f8fafc;
+}
+
+.ai-chat-voice-msg__play svg {
+  display: block;
+}
+
+.ai-chat-voice-msg__body {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
+.ai-chat-voice-msg__wave {
+  position: relative;
+  margin-bottom: 0.15rem;
+}
+
+.ai-chat-voice-msg__track {
+  border-radius: 0.45rem;
+  background: #e8edf3;
+  padding: 0.2rem 0.35rem;
+}
+
+.ai-chat-voice-msg__wave-inner {
+  position: relative;
+  height: 1.75rem;
+}
+
+.ai-chat-voice-msg__bars {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  pointer-events: none;
+}
+
+.ai-chat-voice-msg__bars--bg {
+  z-index: 1;
+}
+
+.ai-chat-voice-msg__bars--bg .ai-chat-voice-msg__bar {
+  background: rgba(100, 116, 139, 0.55);
+}
+
+.ai-chat-voice-msg__bars--played {
+  z-index: 2;
+  clip-path: inset(0 100% 0 0);
+  will-change: clip-path;
+}
+
+.ai-chat-voice-msg__bars--played .ai-chat-voice-msg__bar {
+  background: #fff;
+  box-shadow: 0 0 1px rgba(15, 61, 76, 0.08);
+}
+
+.ai-chat-voice-msg__bar {
+  flex: 1 1 0;
+  min-width: 2px;
+  max-width: 4px;
+  border-radius: 999px;
+  align-self: center;
+}
+
+.ai-chat-voice-msg__playhead {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  width: 2px;
+  margin-left: -1px;
+  left: 0;
+  background: #fff;
+  box-shadow: 0 0 0 1px rgba(15, 61, 76, 0.15);
+  z-index: 3;
+  pointer-events: none;
+}
+
+.ai-chat-voice-msg__seek {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  margin: 0;
+  opacity: 0;
+  cursor: pointer;
+  z-index: 4;
+}
+
+.ai-chat-voice-msg__times {
+  font-size: 0.68rem;
+  font-variant-numeric: tabular-nums;
+  font-weight: 600;
+  color: #475569;
+  padding: 0 0.1rem;
+}
+
+.ai-chat-voice-msg__tools {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.4rem;
+  margin-top: 0.45rem;
+  align-items: center;
+}
+
+.ai-chat-voice-msg__skip {
+  border: 1px solid rgba(15, 61, 76, 0.12);
+  background: #f8fafc;
+  color: #334155;
+  font-size: 0.68rem;
+  font-weight: 700;
+  padding: 0.18rem 0.5rem;
+  border-radius: 999px;
+  cursor: pointer;
+}
+
+.ai-chat-voice-msg__skip:hover {
+  background: #f1f5f9;
+}
+
+.ai-chat-voice-msg__volume-wrap {
+  position: relative;
+}
+
+.ai-chat-voice-msg__volume-btn {
+  border: 1px solid rgba(15, 61, 76, 0.14);
+  background: #fff;
+  color: #111;
+  width: 1.85rem;
+  height: 1.85rem;
+  border-radius: 999px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  padding: 0;
+}
+
+.ai-chat-voice-msg__volume-btn:hover {
+  background: #f8fafc;
+}
+
+.ai-chat-voice-msg__volume-btn svg {
+  display: block;
+}
+
+.ai-chat-voice-msg__volume-pop {
+  position: absolute;
+  left: 50%;
+  bottom: calc(100% + 0.35rem);
+  transform: translateX(-50%);
+  background: #fff;
+  border: 1px solid rgba(15, 61, 76, 0.14);
+  border-radius: 0.5rem;
+  padding: 0.35rem 0.5rem;
+  box-shadow: 0 4px 14px rgba(15, 61, 76, 0.12);
+  z-index: 5;
+  min-width: 7rem;
+}
+
+.ai-chat-voice-msg__volume-pop input[type="range"] {
+  width: 100%;
+  margin: 0;
+  accent-color: #111;
+}
+
+.ai-chat-voice-msg__action {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.25rem;
+  font-size: 0.68rem;
+  font-weight: 600;
+  color: #334155;
+  text-decoration: none;
+  border: 1px solid rgba(15, 61, 76, 0.14);
+  background: #f8fafc;
+  border-radius: 999px;
+  padding: 0.18rem 0.55rem;
+}
+
+.ai-chat-voice-msg__action:hover {
+  background: #f1f5f9;
+  color: #0f172a;
+  text-decoration: none;
+}
+
+.ai-chat-voice-msg__action-icon {
+  font-size: 0.72rem;
   line-height: 1;
 }
 
-.ai-chat-audio-player__btn--main {
-  color: #ffffff;
-}
-
-.ai-chat-audio-player__btn:hover,
-.ai-chat-audio-player__btn:focus-visible {
-  background: rgba(255, 255, 255, 0.12);
-  color: #ffffff;
-}
-
-.ai-chat-audio-player__time {
-  min-width: 2.1rem;
-  color: rgba(255, 255, 255, 0.65);
+.ai-chat-meta--voice {
+  margin-top: 0.25rem;
   font-size: 0.68rem;
-  font-variant-numeric: tabular-nums;
+  color: #64748b;
+}
+
+.ai-chat-voice-msg.is-playing .ai-chat-voice-msg__play {
+  color: #111;
+  border-color: rgba(15, 61, 76, 0.2);
+  background: #f8fafc;
 }
 
 .ai-chat-reaction {
@@ -1445,11 +1653,6 @@ label[for="ocr-text-placeholder"] {
 .ai-chat-stop-btn:hover {
   background: #dc3545;
   color: #fff;
-}
-
-/* [TR] Ses indirme butonu (anchor) — diğer kontrollerle hizalı. */
-.ai-chat-audio-player__btn--download {
-  text-decoration: none;
 }
 
 /* ============================================================= */

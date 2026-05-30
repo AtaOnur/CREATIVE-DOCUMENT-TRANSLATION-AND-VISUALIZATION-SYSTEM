@@ -21,4 +21,9 @@ public class NarrateFromOcrRequestViewModel
     /// OCR çıktısı veya kullanıcı düzeltmesi; sunucuda normalize edilerek Gemini TTS’ye iletilir.
     /// </summary>
     public string Text { get; set; } = "";
+
+    /// <summary>
+    /// Seslendirme dili. Kaynak metinden farklıysa önce bu dile çevrilir, sonra TTS uygulanır.
+    /// </summary>
+    public string TargetLanguage { get; set; } = "English";
 }

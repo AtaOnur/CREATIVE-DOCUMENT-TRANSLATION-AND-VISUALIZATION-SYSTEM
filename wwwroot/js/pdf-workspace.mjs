@@ -285,6 +285,14 @@ function setAiStatus(type, message, options = {}) {
   aiStatus.textContent = message;
 }
 
+function clearAiStatus() {
+  if (!aiStatus) return;
+  aiStatus.classList.add("d-none");
+  aiStatus.classList.remove("text-success", "text-danger", "text-muted", "workspace-status-loading");
+  aiStatus.textContent = "";
+  aiStatus.innerHTML = "";
+}
+
 // ─── SOHBET YARDIMCILARI (WhatsApp tarzı balonlar, #ai-chat-window sağ panelde) ───
 // [TR] Ne işe yarar: Kullanıcı gönderisi + AI cevabı DOM’a eklenir; sohbet geçmişi sunucuda kalıcı tutulmaz (oturumdaki sayfa).
 // [TR] Balon yapısı: kullanıcı mesajı — görsel + metin + isteğe bağlı prompt + reaction chip’ler (işlem/model/stil);
@@ -305,6 +313,45 @@ function updateChatCount() {
 
 function scrollChatToBottom() {
   if (chatWindow) chatWindow.scrollTop = chatWindow.scrollHeight;
+}
+
+function removeChatMessage(msg) {
+  if (!msg || !chatWindow) return;
+  msg.remove();
+  chatMessageCount = chatWindow.querySelectorAll(".ai-chat-message").length;
+  updateChatCount();
+  persistAiChat();
+  if (chatMessageCount === 0 && chatEmpty) {
+    const clone = chatEmpty.cloneNode(true);
+    clone.classList.remove("d-none");
+    chatWindow.appendChild(clone);
+  }
+}
+
+function upgradeLegacyChatErrors(root = chatWindow) {
+  root?.querySelectorAll(".ai-chat-message--ai").forEach((msg) => {
+    const bubble = msg.querySelector(".ai-chat-bubble");
+    if (!bubble) return;
+    const inlineBg = bubble.getAttribute("style") || "";
+    const isError =
+      msg.classList.contains("ai-chat-message--error") ||
+      inlineBg.includes("#fee2e2") ||
+      inlineBg.includes("fee2e2");
+    if (!isError) return;
+    msg.classList.add("ai-chat-message--error");
+    bubble.classList.add("ai-chat-bubble--error");
+    if (inlineBg.includes("fee2e2")) bubble.removeAttribute("style");
+    const wrap = msg.querySelector(".ai-chat-bubble-wrap");
+    if (wrap && !wrap.querySelector('[data-role="chat-error-dismiss"]')) {
+      const btn = document.createElement("button");
+      btn.type = "button";
+      btn.className = "ai-chat-error-dismiss";
+      btn.dataset.role = "chat-error-dismiss";
+      btn.title = "Delete error";
+      btn.textContent = "🗑 Delete";
+      wrap.appendChild(btn);
+    }
+  });
 }
 
 // [TR] Uzun mesaj balonları için kısaltılmış metin + "Devamını göster" kutusu.
@@ -387,10 +434,19 @@ function persistAiChat() {
   const msgs = [...chatWindow.querySelectorAll(".ai-chat-message")].filter(
     (n) =>
       !n.querySelector(".ai-chat-typing") &&
-      !n.querySelector(".ai-chat-audio-player") &&
       !n.classList.contains("ai-chat-message--op-setup")
   );
-  const html = msgs.map((n) => n.outerHTML).join("");
+  const html = msgs
+    .map((n) => {
+      const clone = n.cloneNode(true);
+      clone.querySelectorAll(".ai-chat-voice-msg").forEach((v) => {
+        delete v.dataset.voiceBound;
+        const url = (v.dataset.audioUrl || "").trim();
+        if (url.startsWith("blob:")) v.dataset.audioUrl = "";
+      });
+      return clone.outerHTML;
+    })
+    .join("");
   const sources = serializeAiChatSources();
   try {
     const key = getAiChatStorageKey();
@@ -536,6 +592,13 @@ function restoreAiChat() {
   if (!data || typeof data.html !== "string" || !data.html.trim()) return;
 
   chatWindow.innerHTML = data.html;
+  chatWindow.querySelectorAll(".ai-chat-voice-msg").forEach((v) => {
+    delete v.dataset.voiceBound;
+    v._voicePlayer = null;
+    v._audioEl = null;
+  });
+  upgradeLegacyVoiceMessages(chatWindow);
+  upgradeLegacyChatErrors(chatWindow);
   if (data.v >= 2 && data.sources) {
     restoreAiChatSources(data.sources);
   }
@@ -544,6 +607,8 @@ function restoreAiChat() {
   });
   chatMessageCount = chatWindow.querySelectorAll(".ai-chat-message").length;
   updateChatCount();
+  bindChatAudioPlayers();
+  persistAiChat();
   scrollChatToBottom();
 }
 
@@ -730,12 +795,44 @@ async function appendChatOperationSetup(sourceId, operation) {
 //      yakalayıcıları runChatOperation(form) çağırır.
 function buildOpFormHtml(sourceId, operation, opLabel) {
   const setupId = `chat-setup-${Date.now()}-${Math.random().toString(16).slice(2)}`;
+  const isNarrate = operation === "Narrate";
+  const langLabel = isNarrate
+    ? "Seslendirme dili"
+    : operation === "Translate"
+      ? "Hedef dil"
+      : "Cevap dili";
+  const styleField = isNarrate
+    ? ""
+    : `<label class="ai-chat-op-field">
+            <span>Stil</span>
+            <select class="form-select form-select-sm" data-field="style">
+              <option value="Formal"${defaultStyle === "Formal" ? " selected" : ""}>Formal</option>
+              <option value="Academic"${defaultStyle === "Academic" ? " selected" : ""}>Academic</option>
+              <option value="Simplified"${defaultStyle === "Simplified" ? " selected" : ""}>Simplified</option>
+            </select>
+          </label>`;
+  const modelField = isNarrate
+    ? ""
+    : `<label class="ai-chat-op-field">
+            <span>Model</span>
+            <select class="form-select form-select-sm" data-field="modelName">${buildChatModelOptions()}</select>
+          </label>`;
+  const customField = isNarrate
+    ? ""
+    : `<label class="ai-chat-op-field mt-2">
+          <span>Custom prompt</span>
+          <textarea class="form-control form-control-sm" rows="2" data-field="customInstruction" placeholder="Add an optional instruction"></textarea>
+        </label>`;
+  const narrateHint = isNarrate
+    ? `<p class="small text-muted mb-2">If you pick a language other than the source text, it will be translated first, then narrated.</p>`
+    : "";
   return `
       <form class="ai-chat-op-form" data-role="chat-op-form" data-source-id="${escapeHtml(sourceId)}" data-operation="${escapeHtml(operation)}" id="${escapeHtml(setupId)}">
         <div class="ai-chat-op-form__title">${escapeHtml(opLabel)} settings</div>
+        ${narrateHint}
         <div class="ai-chat-op-form__grid">
           <label class="ai-chat-op-field">
-            <span>${operation === "Translate" ? "Hedef dil" : "Cevap dili"}</span>
+            <span>${langLabel}</span>
             <select class="form-select form-select-sm" data-field="targetLanguage">
               <option value="Turkish">Turkish</option>
               <option value="English" selected>English</option>
@@ -751,25 +848,12 @@ function buildOpFormHtml(sourceId, operation, opLabel) {
               <option value="Korean">Korean</option>
             </select>
           </label>
-          <label class="ai-chat-op-field">
-            <span>Stil</span>
-            <select class="form-select form-select-sm" data-field="style">
-              <option value="Formal"${defaultStyle === "Formal" ? " selected" : ""}>Formal</option>
-              <option value="Academic"${defaultStyle === "Academic" ? " selected" : ""}>Academic</option>
-              <option value="Simplified"${defaultStyle === "Simplified" ? " selected" : ""}>Simplified</option>
-            </select>
-          </label>
-          <label class="ai-chat-op-field">
-            <span>Model</span>
-            <select class="form-select form-select-sm" data-field="modelName">${buildChatModelOptions()}</select>
-          </label>
+          ${styleField}
+          ${modelField}
         </div>
-        <label class="ai-chat-op-field mt-2">
-          <span>Custom prompt</span>
-          <textarea class="form-control form-control-sm" rows="2" data-field="customInstruction" placeholder="Add an optional instruction"></textarea>
-        </label>
+        ${customField}
         <div class="ai-chat-op-form__actions">
-          <button type="submit" class="btn btn-sm btn-dark">Run</button>
+          <button type="submit" class="btn btn-sm btn-dark">${isNarrate ? "Narrate" : "Run"}</button>
           <button type="button" class="btn btn-sm btn-outline-secondary" data-role="chat-op-cancel">Cancel</button>
         </div>
       </form>`;
@@ -836,7 +920,7 @@ async function runChatOperation(form) {
     });
     const res = await r.json();
     if (!res.ok) {
-      setAiStatus("error", res.message || "AI operation failed.");
+      clearAiStatus();
       replaceWithAiMessage(typingNode, { text: res.message || "AI operation failed.", isError: true });
       return;
     }
@@ -853,11 +937,11 @@ async function runChatOperation(form) {
   } catch (e) {
     // [TR] Kullanıcı Stop'a bastıysa hata değil, "iptal edildi" mesajı göster.
     if (e?.name === "AbortError") {
-      setAiStatus("info", "Operation cancelled.");
+      clearAiStatus();
       replaceWithAiMessage(typingNode, { text: "⏹ Operation cancelled by user." });
       return;
     }
-    setAiStatus("error", "An error occurred during the AI request.");
+    clearAiStatus();
     replaceWithAiMessage(typingNode, { text: "An error occurred during the AI request.", isError: true });
   }
 }
@@ -895,9 +979,11 @@ function replaceWithAiMessage(typingNode, { text, imageUrl, isError, resultUrl }
     return el;
   })();
 
+  if (isError) wrap.classList.add("ai-chat-message--error");
+
   const parts = [];
   parts.push('<div class="ai-chat-bubble-wrap">');
-  parts.push(`<div class="ai-chat-bubble" ${isError ? 'style="background:#fee2e2;border-color:#fecaca;color:#7f1d1d"' : ""}>`);
+  parts.push(`<div class="ai-chat-bubble${isError ? " ai-chat-bubble--error" : ""}">`);
 
   if (text && text.trim().length > 0) {
     parts.push(renderCollapsibleText(text));
@@ -911,6 +997,12 @@ function replaceWithAiMessage(typingNode, { text, imageUrl, isError, resultUrl }
   }
 
   parts.push("</div>"); // bubble
+
+  if (isError) {
+    parts.push(
+      '<button type="button" class="ai-chat-error-dismiss" data-role="chat-error-dismiss" title="Delete error">🗑 Delete</button>'
+    );
+  }
 
   if (resultUrl) {
     parts.push(`<div class="ai-chat-meta"><a class="link-primary" href="${escapeHtml(resultUrl)}">Open detailed result →</a></div>`);
@@ -971,6 +1063,12 @@ if (chatWindow) {
       return;
     }
 
+    const dismissBtn = ev.target?.closest?.('[data-role="chat-error-dismiss"]');
+    if (dismissBtn) {
+      removeChatMessage(dismissBtn.closest(".ai-chat-message"));
+      return;
+    }
+
     // [TR] Devam eden işlemi yarıda durdur (Stop).
     const stopBtn = ev.target?.closest?.('[data-role="chat-stop"]');
     if (stopBtn) {
@@ -996,8 +1094,7 @@ if (chatWindow) {
           setOcrStatus("error", "No text found for narration.");
           return;
         }
-        dismissPendingChatOpSetups();
-        createNarrationInChat(source.text, opBtn);
+        appendChatOperationSetup(sourceId, operation);
         return;
       }
       appendChatOperationSetup(sourceId, operation);
@@ -1015,6 +1112,10 @@ if (chatWindow) {
     const form = ev.target?.closest?.('[data-role="chat-op-form"]');
     if (!form) return;
     ev.preventDefault();
+    if (form.dataset.operation === "Narrate") {
+      runNarrationFromForm(form);
+      return;
+    }
     runChatOperation(form);
   });
 }
@@ -1235,9 +1336,11 @@ if (fnRail) {
         setOcrStatus("error", "No text found for narration.");
         return;
       }
-      hideFnFlyout();
-      dismissPendingChatOpSetups();
-      createNarrationInChat(src.text, btn);
+      if (!fnFlyout.classList.contains("d-none") && fnFlyout.dataset.operation === operation) {
+        hideFnFlyout();
+        return;
+      }
+      openFnFlyout(btn, operation);
       return;
     }
     // [TR] Aynı butona tekrar basınca aç/kapat (toggle).
@@ -1255,6 +1358,10 @@ if (fnFlyout) {
     if (!form) return;
     ev.preventDefault();
     hideFnFlyout();
+    if (form.dataset.operation === "Narrate") {
+      runNarrationFromForm(form);
+      return;
+    }
     runChatOperation(form);
   });
   fnFlyout.addEventListener("click", (ev) => {
@@ -2102,85 +2209,303 @@ if (btnSaveOcrText) {
   });
 }
 
-// ─── OCR/Gemini TTS → AI sohbet içinde ses çıktısı ──────────────────────────
-// [TR] Ses artık ayrı panelde değil; chat içinde AI balonu olarak üretilir.
-//      Sunucu kaydı dönerse player kalıcı /ai-audio URL'sini kullanır ve notebook linki gösterir.
-function appendChatNarrationMessage(audioSource, sourceText, savedInfo = {}) {
-  if (!chatWindow) return null;
-  ensureChatVisible();
+// ─── OCR/Gemini TTS → WhatsApp tarzı ses mesajı ─────────────────────────────
+let activeVoiceAudio = null;
+const VOICE_WAVE_BAR_COUNT = 48;
+const voiceWavePeaksCache = new Map();
 
-  const objectUrl = typeof audioSource === "string" ? audioSource : URL.createObjectURL(audioSource);
-  const audioEl = new Audio(objectUrl);
-  const notebookUrl = savedInfo.aiResultId ? `/Notebook/Details/${encodeURIComponent(savedInfo.aiResultId)}` : "";
-  // [TR] İndirme için dosya adı: kayıt id'si varsa onunla, yoksa zaman damgası.
-  const downloadName = `narration-${savedInfo.aiResultId || Date.now()}.wav`;
-  const wrap = document.createElement("div");
-  wrap.className = "ai-chat-message ai-chat-message--ai";
-  wrap.innerHTML = `
-    <div class="ai-chat-bubble-wrap ai-chat-bubble-wrap--wide">
-      <div class="ai-chat-bubble">
-        <div class="ai-chat-audio-player">
-          <div class="ai-chat-audio-player__title">Audio output</div>
-          <div class="ai-chat-audio-player__controls">
-            <button type="button" class="ai-chat-audio-player__btn" data-role="audio-rewind" title="10 saniye geri" aria-label="10 saniye geri">⏮</button>
-            <button type="button" class="ai-chat-audio-player__btn ai-chat-audio-player__btn--main" data-role="audio-play" title="Play" aria-label="Play">
-              <span data-role="audio-play-icon">▶</span>
-            </button>
-            <button type="button" class="ai-chat-audio-player__btn" data-role="audio-stop" title="Stop and rewind" aria-label="Stop and rewind">■</button>
-            <button type="button" class="ai-chat-audio-player__btn" data-role="audio-replay" title="Replay" aria-label="Replay">↻</button>
-            <button type="button" class="ai-chat-audio-player__btn" data-role="audio-forward" title="10 saniye ileri" aria-label="10 saniye ileri">⏭</button>
-            <a class="ai-chat-audio-player__btn ai-chat-audio-player__btn--download" data-role="audio-download" href="${escapeHtml(objectUrl)}" download="${escapeHtml(downloadName)}" title="Download audio file" aria-label="Download audio file">⬇</a>
-            <span class="ai-chat-audio-player__time" data-role="audio-time">0:00</span>
-          </div>
-        </div>
-      </div>
-      <div class="ai-chat-meta">
-        Gemini TTS · ${escapeHtml((sourceText || "").slice(0, 72))}${sourceText && sourceText.length > 72 ? "..." : ""}
-        · <a data-role="audio-download-link" href="${escapeHtml(objectUrl)}" download="${escapeHtml(downloadName)}">Download</a>
-        ${notebookUrl ? ` · <a href="${notebookUrl}">Save to Notebook</a>` : ""}
-      </div>
-    </div>`;
+function voiceWaveStorageKey(audioUrl) {
+  return `pdf_bitirme_wave_v1:${audioUrl}`;
+}
+
+function parseWavePeaksAttr(raw) {
+  if (!raw) return null;
+  try {
+    const peaks = JSON.parse(raw);
+    return Array.isArray(peaks) && peaks.length > 0 ? peaks : null;
+  } catch {
+    return null;
+  }
+}
+
+function renderVoiceWaveformBarsHtml(peaks) {
+  return peaks
+    .map((peak) => {
+      const h = Math.max(12, Math.min(100, Math.round(peak * 100)));
+      return `<span class="ai-chat-voice-msg__bar" style="height:${h}%"></span>`;
+    })
+    .join("");
+}
+
+function applyVoiceWaveformToWrap(wrap, peaks) {
+  if (!wrap || !peaks?.length) return;
+  const barsHtml = renderVoiceWaveformBarsHtml(peaks);
+  wrap.dataset.wavePeaks = JSON.stringify(peaks);
+  wrap.querySelectorAll('[data-role="audio-bars"], [data-role="audio-bars-played"]').forEach((el) => {
+    el.innerHTML = barsHtml;
+  });
+}
+
+function ensureVoiceWaveformPlayedLayer(wrap) {
+  const inner = wrap?.querySelector('[data-role="audio-wave-inner"]');
+  if (!inner) return;
+  let bg = inner.querySelector('[data-role="audio-bars"]');
+  let played = inner.querySelector('[data-role="audio-bars-played"]');
+  if (bg && !played) {
+    played = document.createElement("div");
+    played.className = "ai-chat-voice-msg__bars ai-chat-voice-msg__bars--played";
+    played.dataset.role = "audio-bars-played";
+    played.innerHTML = bg.innerHTML;
+    bg.classList.add("ai-chat-voice-msg__bars--bg");
+    const playhead = inner.querySelector('[data-role="audio-playhead"]');
+    inner.insertBefore(played, playhead || null);
+  } else if (!bg && played) {
+    bg = document.createElement("div");
+    bg.className = "ai-chat-voice-msg__bars ai-chat-voice-msg__bars--bg";
+    bg.dataset.role = "audio-bars";
+    bg.innerHTML = played.innerHTML;
+    inner.insertBefore(bg, played);
+  }
+  if (bg) {
+    bg.dataset.role = "audio-bars";
+    bg.classList.add("ai-chat-voice-msg__bars--bg");
+  }
+  if (played) played.classList.add("ai-chat-voice-msg__bars--played");
+}
+
+function syncVoiceWaveformProgress(wrap, pct) {
+  const played = wrap.querySelector('[data-role="audio-bars-played"]');
+  const playhead = wrap.querySelector('[data-role="audio-playhead"]');
+  const clipRight = Math.max(0, Math.min(100, 100 - pct));
+  if (played) played.style.clipPath = `inset(0 ${clipRight}% 0 0)`;
+  if (playhead) playhead.style.left = `${pct}%`;
+}
+
+function consolidateVoiceWaveformLayers(wrap) {
+  const track = wrap?.querySelector(".ai-chat-voice-msg__track");
+  if (!track) return;
+
+  let inner = track.querySelector('[data-role="audio-wave-inner"]');
+  if (!inner) {
+    inner = document.createElement("div");
+    inner.className = "ai-chat-voice-msg__wave-inner";
+    inner.dataset.role = "audio-wave-inner";
+    const bars = track.querySelector(
+      '[data-role="audio-bars"], .ai-chat-voice-msg__bars--all, .ai-chat-voice-msg__bars--played, [data-role="audio-bars-played"]'
+    );
+    const playhead = track.querySelector('[data-role="audio-playhead"]');
+    const seek = track.querySelector('[data-role="audio-seek"]');
+    track.textContent = "";
+    track.appendChild(inner);
+    if (bars) inner.appendChild(bars);
+    if (playhead) inner.appendChild(playhead);
+    if (seek) inner.appendChild(seek);
+  }
+
+  const played = inner.querySelector('[data-role="audio-bars-played"], .ai-chat-voice-msg__bars--played');
+  let bars = inner.querySelector('[data-role="audio-bars"], .ai-chat-voice-msg__bars--all');
+  if (!bars && played) {
+    bars = played;
+    bars.dataset.role = "audio-bars";
+    bars.classList.remove("ai-chat-voice-msg__bars--played");
+  }
+  if (bars) {
+    bars.dataset.role = "audio-bars";
+    bars.classList.add("ai-chat-voice-msg__bars--bg");
+    bars.classList.remove("ai-chat-voice-msg__bars--all");
+  }
+  ensureVoiceWaveformPlayedLayer(wrap);
+
+  const times = wrap.querySelector(".ai-chat-voice-msg__times");
+  if (times && !times.querySelector('[data-role="audio-time"]')) {
+    const cur = times.querySelector('[data-role="audio-current"]')?.textContent?.trim() || "0:00";
+    const dur = times.querySelector('[data-role="audio-duration"]')?.textContent?.trim() || "0:00";
+    times.innerHTML = `<span data-role="audio-time">${cur} / ${dur}</span>`;
+  }
+}
+
+const VOICE_PLAY_ICON =
+  '<svg viewBox="0 0 24 24" width="15" height="15" fill="currentColor" aria-hidden="true"><path d="M8 5v14l11-7z"/></svg>';
+const VOICE_PAUSE_ICON =
+  '<svg viewBox="0 0 24 24" width="15" height="15" fill="currentColor" aria-hidden="true"><path d="M6 4h4v16H6V4zm8 0h4v16h-4V4z"/></svg>';
+
+function voiceVolumeIconSvg(level) {
+  if (level === "mute") {
+    return '<svg viewBox="0 0 24 24" width="15" height="15" fill="currentColor" aria-hidden="true"><path d="M16.5 12c0-1.77-1.02-3.29-2.5-4.03v2.21l2.45 2.45c.03-.2.05-.41.05-.63zm2.5 0c0 .94-.2 1.82-.54 2.64l1.51 1.51C20.63 14.91 21 13.5 21 12c0-4.28-2.99-7.86-7-8.77v2.06c2.89.86 5 3.54 5 6.71zM4.27 3 3 4.27 7.73 9H3v6h4l5 5v-6.73l4.25 4.25c-.67.52-1.42.93-2.25 1.18v2.06c1.38-.31 2.63-.95 3.69-1.81L19.73 21 21 19.73l-9-9L4.27 3zM12 4 9.91 6.09 12 8.18V4z"/></svg>';
+  }
+  if (level === "low") {
+    return '<svg viewBox="0 0 24 24" width="15" height="15" fill="currentColor" aria-hidden="true"><path d="M18.5 12c0-1.77-1.02-3.29-2.5-4.03v8.05c1.48-.73 2.5-2.25 2.5-4.02zM5 9v6h4l5 5V4L9 9H5z"/></svg>';
+  }
+  return '<svg viewBox="0 0 24 24" width="15" height="15" fill="currentColor" aria-hidden="true"><path d="M3 9v6h4l5 5V4L7 9H3zm13.5 3c0-1.77-1.02-3.29-2.5-4.03v8.05c1.48-.73 2.5-2.25 2.5-4.02zM14 3.23v2.06c2.89.86 5 3.54 5 6.71s-2.11 5.85-5 6.71v2.06c4.01-.91 7-4.49 7-8.77s-2.99-7.86-7-8.77z"/></svg>';
+}
+
+
+async function analyzeVoiceWaveformPeaks(audioUrl) {
+  if (!audioUrl || audioUrl.startsWith("blob:")) return null;
+  if (voiceWavePeaksCache.has(audioUrl)) return voiceWavePeaksCache.get(audioUrl);
+
+  try {
+    const cached = localStorage.getItem(voiceWaveStorageKey(audioUrl));
+    const fromStorage = parseWavePeaksAttr(cached);
+    if (fromStorage) {
+      voiceWavePeaksCache.set(audioUrl, fromStorage);
+      return fromStorage;
+    }
+  } catch {
+    /* yoksay */
+  }
+
+  try {
+    const response = await fetch(audioUrl, { credentials: "same-origin" });
+    if (!response.ok) return null;
+    const arrayBuffer = await response.arrayBuffer();
+    const AudioCtx = window.AudioContext || window.webkitAudioContext;
+    if (!AudioCtx) return null;
+    const audioContext = new AudioCtx();
+    try {
+      const audioBuffer = await audioContext.decodeAudioData(arrayBuffer.slice(0));
+      const channelData = audioBuffer.getChannelData(0);
+      const barCount = VOICE_WAVE_BAR_COUNT;
+      const samplesPerBar = Math.max(1, Math.floor(channelData.length / barCount));
+      const peaks = [];
+      for (let i = 0; i < barCount; i++) {
+        const start = i * samplesPerBar;
+        const end = Math.min(start + samplesPerBar, channelData.length);
+        let sum = 0;
+        for (let j = start; j < end; j++) sum += Math.abs(channelData[j]);
+        peaks.push(sum / Math.max(1, end - start));
+      }
+      const maxPeak = Math.max(...peaks, 0.001);
+      const normalized = peaks.map((p) => 0.14 + (p / maxPeak) * 0.86);
+      voiceWavePeaksCache.set(audioUrl, normalized);
+      try {
+        localStorage.setItem(voiceWaveStorageKey(audioUrl), JSON.stringify(normalized));
+      } catch {
+        /* yoksay */
+      }
+      return normalized;
+    } finally {
+      await audioContext.close().catch(() => {});
+    }
+  } catch (e) {
+    console.warn("Voice waveform analysis failed:", e);
+    return null;
+  }
+}
+
+async function ensureVoiceWaveform(wrap) {
+  if (!wrap) return;
+  const existing = parseWavePeaksAttr(wrap.dataset.wavePeaks);
+  if (existing) {
+    applyVoiceWaveformToWrap(wrap, existing);
+    return;
+  }
+  const src = wrap.dataset.audioUrl || "";
+  const peaks = await analyzeVoiceWaveformPeaks(src);
+  if (peaks) {
+    applyVoiceWaveformToWrap(wrap, peaks);
+    persistAiChat();
+  }
+}
+
+function wireVoiceMessagePlayer(wrap) {
+  if (!wrap || wrap._voicePlayer) return;
+  consolidateVoiceWaveformLayers(wrap);
+  ensureVoiceWaveformPlayedLayer(wrap);
+
+  const src = (wrap.dataset.audioUrl || "").trim();
+  if (!src || src.startsWith("blob:")) {
+    wrap.classList.add("ai-chat-voice-msg--broken");
+    return;
+  }
+
+  const audioEl = new Audio(src);
+  audioEl.preload = "metadata";
+  wrap._audioEl = audioEl;
 
   const playBtn = wrap.querySelector('[data-role="audio-play"]');
   const playIcon = wrap.querySelector('[data-role="audio-play-icon"]');
   const timeEl = wrap.querySelector('[data-role="audio-time"]');
-  const setTime = () => {
-    if (timeEl) timeEl.textContent = formatNarrateTime(audioEl.currentTime);
+  const seekEl = wrap.querySelector('[data-role="audio-seek"]');
+  const volumeBtn = wrap.querySelector('[data-role="audio-volume-btn"]');
+  const volumeIcon = wrap.querySelector('[data-role="audio-volume-icon"]');
+  const volumePop = wrap.querySelector('[data-role="audio-volume-pop"]');
+  const volumeRange = wrap.querySelector('[data-role="audio-volume-range"]');
+
+  if (playIcon && !playIcon.querySelector("svg")) playIcon.innerHTML = VOICE_PLAY_ICON;
+  if (volumeIcon && !volumeIcon.querySelector("svg")) volumeIcon.innerHTML = voiceVolumeIconSvg("high");
+
+  const storedVolume = Number(wrap.dataset.volume);
+  audioEl.volume = Number.isFinite(storedVolume) ? Math.min(1, Math.max(0, storedVolume)) : 1;
+  if (volumeRange) volumeRange.value = String(Math.round(audioEl.volume * 100));
+
+  const updateVolumeIcon = () => {
+    if (!volumeIcon) return;
+    const level = audioEl.volume <= 0 ? "mute" : audioEl.volume < 0.45 ? "low" : "high";
+    volumeIcon.innerHTML = voiceVolumeIconSvg(level);
   };
-  const setPlaying = () => {
-    if (!playIcon || !playBtn) return;
+  updateVolumeIcon();
+
+  const setPlayingUi = () => {
     const playing = !audioEl.paused && !audioEl.ended;
-    playIcon.textContent = playing ? "⏸" : "▶";
-    const label = playing ? "Pause" : "Play";
-    playBtn.title = label;
-    playBtn.setAttribute("aria-label", label);
+    if (playIcon) playIcon.innerHTML = playing ? VOICE_PAUSE_ICON : VOICE_PLAY_ICON;
+    wrap.classList.toggle("is-playing", playing);
   };
 
-  wrap.querySelector('[data-role="audio-rewind"]')?.addEventListener("click", () => {
-    audioEl.currentTime = Math.max(0, audioEl.currentTime - NARRATE_SEEK_SECONDS);
-    setTime();
+  let progressRaf = null;
+
+  const syncProgress = () => {
+    const cur = audioEl.currentTime || 0;
+    const dur = Number.isFinite(audioEl.duration) && audioEl.duration > 0 ? audioEl.duration : 0;
+    if (timeEl) timeEl.textContent = `${formatNarrateTime(cur)} / ${formatNarrateTime(dur)}`;
+    const pct = dur > 0 ? Math.min(100, (cur / dur) * 100) : 0;
+    if (seekEl && !seekEl.matches(":active")) seekEl.value = String(Math.round(pct));
+    syncVoiceWaveformProgress(wrap, pct);
+  };
+
+  const startProgressLoop = () => {
+    if (progressRaf) return;
+    const frame = () => {
+      syncProgress();
+      if (!audioEl.paused && !audioEl.ended) {
+        progressRaf = requestAnimationFrame(frame);
+      } else {
+        progressRaf = null;
+      }
+    };
+    progressRaf = requestAnimationFrame(frame);
+  };
+
+  const stopProgressLoop = () => {
+    if (!progressRaf) return;
+    cancelAnimationFrame(progressRaf);
+    progressRaf = null;
+  };
+
+  audioEl.addEventListener("loadedmetadata", syncProgress);
+  audioEl.addEventListener("durationchange", syncProgress);
+  audioEl.addEventListener("ended", () => {
+    stopProgressLoop();
+    setPlayingUi();
+    syncProgress();
   });
-  wrap.querySelector('[data-role="audio-forward"]')?.addEventListener("click", () => {
-    const dur = audioEl.duration;
-    const max = Number.isFinite(dur) && dur > 0 ? dur : audioEl.currentTime + NARRATE_SEEK_SECONDS;
-    audioEl.currentTime = Math.min(max, audioEl.currentTime + NARRATE_SEEK_SECONDS);
-    setTime();
+  audioEl.addEventListener("play", () => {
+    if (activeVoiceAudio && activeVoiceAudio !== audioEl) activeVoiceAudio.pause();
+    activeVoiceAudio = audioEl;
+    setPlayingUi();
+    clearOcrStatus();
+    startProgressLoop();
   });
-  wrap.querySelector('[data-role="audio-stop"]')?.addEventListener("click", () => {
-    audioEl.pause();
-    audioEl.currentTime = 0;
-    setTime();
-    setPlaying();
+  audioEl.addEventListener("pause", () => {
+    stopProgressLoop();
+    setPlayingUi();
+    syncProgress();
   });
-  wrap.querySelector('[data-role="audio-replay"]')?.addEventListener("click", async () => {
-    audioEl.currentTime = 0;
-    setTime();
-    try {
-      await audioEl.play();
-    } catch (e) {
-      setOcrStatus("error", e?.message || "Audio could not be replayed.");
-    }
+  audioEl.addEventListener("error", () => {
+    wrap.classList.add("ai-chat-voice-msg--broken");
+    setOcrStatus("error", "Saved audio could not be loaded.");
   });
+
   playBtn?.addEventListener("click", async () => {
     try {
       if (audioEl.paused || audioEl.ended) {
@@ -2194,39 +2519,223 @@ function appendChatNarrationMessage(audioSource, sourceText, savedInfo = {}) {
     }
   });
 
-  audioEl.onplay = () => {
-    setPlaying();
-    clearOcrStatus();
+  wrap.querySelector('[data-role="audio-rewind"]')?.addEventListener("click", () => {
+    audioEl.currentTime = Math.max(0, audioEl.currentTime - NARRATE_SEEK_SECONDS);
+    syncProgress();
+  });
+  wrap.querySelector('[data-role="audio-forward"]')?.addEventListener("click", () => {
+    const dur = audioEl.duration;
+    const max = Number.isFinite(dur) && dur > 0 ? dur : audioEl.currentTime + NARRATE_SEEK_SECONDS;
+    audioEl.currentTime = Math.min(max, audioEl.currentTime + NARRATE_SEEK_SECONDS);
+    syncProgress();
+  });
+
+  seekEl?.addEventListener("input", () => {
+    const dur = audioEl.duration;
+    if (!Number.isFinite(dur) || dur <= 0) return;
+    audioEl.currentTime = (Number(seekEl.value) / 100) * dur;
+    syncProgress();
+  });
+
+  volumeBtn?.addEventListener("click", (ev) => {
+    ev.stopPropagation();
+    volumePop?.classList.toggle("d-none");
+  });
+
+  volumeRange?.addEventListener("input", () => {
+    audioEl.volume = Math.min(1, Math.max(0, Number(volumeRange.value) / 100));
+    wrap.dataset.volume = String(audioEl.volume);
+    updateVolumeIcon();
+    persistAiChat();
+  });
+
+  wrap._voicePlayer = {
+    closeVolumePop: () => volumePop?.classList.add("d-none"),
+    stopProgressLoop,
   };
-  audioEl.onpause = () => {
-    setTime();
-    setPlaying();
-  };
-  audioEl.onended = () => {
-    setTime();
-    setPlaying();
-  };
-  audioEl.ontimeupdate = setTime;
+
+  ensureVoiceWaveform(wrap);
+  syncProgress();
+}
+
+function upgradeLegacyVoiceMessages(root = chatWindow) {
+  root?.querySelectorAll(".ai-chat-voice-msg").forEach((wrap) => {
+    const wave = wrap.querySelector(".ai-chat-voice-msg__wave");
+    if (!wave) return;
+
+    if (!wave.querySelector(".ai-chat-voice-msg__track")) {
+      const allBars = wave.querySelector(".ai-chat-voice-msg__bars--all, [data-role='audio-bars']");
+      const playedBars = wave.querySelector(".ai-chat-voice-msg__bars--played, [data-role='audio-bars-played']");
+      const seek = wave.querySelector(".ai-chat-voice-msg__seek");
+      if (allBars || playedBars) {
+        const track = document.createElement("div");
+        track.className = "ai-chat-voice-msg__track";
+        const inner = document.createElement("div");
+        inner.className = "ai-chat-voice-msg__wave-inner";
+        inner.dataset.role = "audio-wave-inner";
+        wave.appendChild(track);
+        track.appendChild(inner);
+        if (allBars) inner.appendChild(allBars);
+        else if (playedBars) inner.appendChild(playedBars);
+        if (!wrap.querySelector('[data-role="audio-playhead"]')) {
+          const playhead = document.createElement("div");
+          playhead.className = "ai-chat-voice-msg__playhead";
+          playhead.dataset.role = "audio-playhead";
+          inner.appendChild(playhead);
+        }
+        if (seek) inner.appendChild(seek);
+      }
+    }
+
+    consolidateVoiceWaveformLayers(wrap);
+
+    const tools = wrap.querySelector(".ai-chat-voice-msg__tools");
+    if (tools && !tools.querySelector('[data-role="audio-volume-btn"]')) {
+      const volumeWrap = document.createElement("div");
+      volumeWrap.className = "ai-chat-voice-msg__volume-wrap";
+      volumeWrap.innerHTML = `
+        <button type="button" class="ai-chat-voice-msg__volume-btn" data-role="audio-volume-btn" title="Volume" aria-label="Volume">
+          <span data-role="audio-volume-icon">${voiceVolumeIconSvg("high")}</span>
+        </button>
+        <div class="ai-chat-voice-msg__volume-pop d-none" data-role="audio-volume-pop">
+          <input type="range" min="0" max="100" value="100" data-role="audio-volume-range" aria-label="Volume level" />
+        </div>`;
+      const download = tools.querySelector(".ai-chat-voice-msg__download");
+      tools.insertBefore(volumeWrap, download || null);
+    }
+    tools?.querySelectorAll(".ai-chat-voice-msg__download, .ai-chat-voice-msg__notebook").forEach((a) => {
+      a.classList.add("ai-chat-voice-msg__action");
+      if (a.classList.contains("ai-chat-voice-msg__download") && !a.querySelector(".ai-chat-voice-msg__action-icon")) {
+        a.innerHTML = `<span class="ai-chat-voice-msg__action-icon" aria-hidden="true">⬇</span> Download`;
+      }
+    });
+    if (!wrap.dataset.volume) wrap.dataset.volume = "1";
+  });
+}
+
+function bindChatAudioPlayers(root = chatWindow) {
+  upgradeLegacyVoiceMessages(root);
+  upgradeLegacyChatErrors(root);
+  root?.querySelectorAll(".ai-chat-voice-msg").forEach((el) => {
+    delete el.dataset.voiceBound;
+    el._voicePlayer = null;
+    el._audioEl = null;
+    wireVoiceMessagePlayer(el);
+  });
+}
+
+document.addEventListener("click", (ev) => {
+  if (ev.target?.closest?.('[data-role="audio-volume-btn"], [data-role="audio-volume-pop"]')) return;
+  chatWindow?.querySelectorAll(".ai-chat-voice-msg").forEach((wrap) => {
+    wrap._voicePlayer?.closeVolumePop?.();
+  });
+});
+
+function appendChatNarrationMessage(audioSource, sourceText, savedInfo = {}) {
+  if (!chatWindow) return null;
+  ensureChatVisible();
+
+  const persistentUrl =
+    savedInfo.audioUrl ||
+    (typeof audioSource === "string" && !audioSource.startsWith("blob:") ? audioSource : "");
+  const storeUrl = persistentUrl;
+  const playbackUrl =
+    storeUrl ||
+    (typeof audioSource === "string" && !audioSource.startsWith("blob:")
+      ? audioSource
+      : typeof audioSource === "string"
+        ? audioSource
+        : URL.createObjectURL(audioSource));
+  const notebookUrl = savedInfo.aiResultId
+    ? `/Notebook/Details/${encodeURIComponent(savedInfo.aiResultId)}`
+    : "";
+  const downloadName = `narration-${savedInfo.aiResultId || Date.now()}.wav`;
+  const langLabel = savedInfo.targetLanguage ? ` · → ${savedInfo.targetLanguage}` : "";
+  const placeholderBars = renderVoiceWaveformBarsHtml(
+    Array.from({ length: VOICE_WAVE_BAR_COUNT }, () => 0.18)
+  );
+
+  const wrap = document.createElement("div");
+  wrap.className = "ai-chat-message ai-chat-message--ai";
+  wrap.innerHTML = `
+    <div class="ai-chat-bubble-wrap">
+      <div class="ai-chat-voice-msg" data-audio-url="${escapeHtml(storeUrl || playbackUrl)}" data-download-name="${escapeHtml(downloadName)}" data-volume="1">
+        <div class="ai-chat-voice-msg__row">
+          <button type="button" class="ai-chat-voice-msg__play" data-role="audio-play" title="Play" aria-label="Play">
+            <span data-role="audio-play-icon">${VOICE_PLAY_ICON}</span>
+          </button>
+          <div class="ai-chat-voice-msg__body">
+            <div class="ai-chat-voice-msg__wave" data-role="audio-wave">
+              <div class="ai-chat-voice-msg__track">
+                <div class="ai-chat-voice-msg__wave-inner" data-role="audio-wave-inner">
+                  <div class="ai-chat-voice-msg__bars ai-chat-voice-msg__bars--bg" data-role="audio-bars">${placeholderBars}</div>
+                  <div class="ai-chat-voice-msg__bars ai-chat-voice-msg__bars--played" data-role="audio-bars-played">${placeholderBars}</div>
+                  <div class="ai-chat-voice-msg__playhead" data-role="audio-playhead"></div>
+                  <input type="range" class="ai-chat-voice-msg__seek" data-role="audio-seek" min="0" max="100" value="0" aria-label="Seek" />
+                </div>
+              </div>
+            </div>
+            <div class="ai-chat-voice-msg__times">
+              <span data-role="audio-time">0:00 / 0:00</span>
+            </div>
+          </div>
+        </div>
+        <div class="ai-chat-voice-msg__tools">
+          <button type="button" class="ai-chat-voice-msg__skip" data-role="audio-rewind">−10s</button>
+          <button type="button" class="ai-chat-voice-msg__skip" data-role="audio-forward">+10s</button>
+          <div class="ai-chat-voice-msg__volume-wrap">
+            <button type="button" class="ai-chat-voice-msg__volume-btn" data-role="audio-volume-btn" title="Volume" aria-label="Volume">
+              <span data-role="audio-volume-icon">${voiceVolumeIconSvg("high")}</span>
+            </button>
+            <div class="ai-chat-voice-msg__volume-pop d-none" data-role="audio-volume-pop">
+              <input type="range" min="0" max="100" value="100" data-role="audio-volume-range" aria-label="Volume level" />
+            </div>
+          </div>
+          <a class="ai-chat-voice-msg__action ai-chat-voice-msg__download" data-role="audio-download" href="${escapeHtml(playbackUrl)}" download="${escapeHtml(downloadName)}">
+            <span class="ai-chat-voice-msg__action-icon" aria-hidden="true">⬇</span> Download
+          </a>
+          ${notebookUrl ? `<a class="ai-chat-voice-msg__action ai-chat-voice-msg__notebook" href="${escapeHtml(notebookUrl)}">Notebook</a>` : ""}
+        </div>
+      </div>
+      <div class="ai-chat-reactions">
+        <span class="ai-chat-reaction ai-chat-reaction--operation">Narrate</span>
+        ${savedInfo.targetLanguage ? `<span class="ai-chat-reaction ai-chat-reaction--lang">→ ${escapeHtml(savedInfo.targetLanguage)}</span>` : ""}
+      </div>
+      <div class="ai-chat-meta ai-chat-meta--voice">
+        Gemini TTS${langLabel}${sourceText ? ` · ${escapeHtml(sourceText.slice(0, 72))}${sourceText.length > 72 ? "..." : ""}` : ""}
+      </div>
+    </div>`;
 
   chatWindow.appendChild(wrap);
+  wireVoiceMessagePlayer(wrap.querySelector(".ai-chat-voice-msg"));
   chatMessageCount += 1;
   updateChatCount();
+  persistAiChat();
   saveChatMessageToServer({
     role: "ai",
     messageType: "audio",
-    text: `Audio output: ${(sourceText || "").slice(0, 240)}`,
-    audioUrl: savedInfo.audioUrl || (typeof audioSource === "string" ? audioSource : ""),
+    text: `Voice message: ${(sourceText || "").slice(0, 240)}`,
+    audioUrl: persistentUrl || playbackUrl,
     resultUrl: notebookUrl,
   });
   scrollChatToBottom();
-
-  audioEl.play().catch(() => {
-    setPlaying();
-  });
   return wrap;
 }
 
-async function createNarrationInChat(text, triggerButton = null) {
+async function runNarrationFromForm(form) {
+  const sourceId = form.dataset.sourceId || "";
+  const source = aiChatSources.get(sourceId);
+  if (!source?.text?.trim()) {
+    setOcrStatus("error", "No text found for narration.");
+    return;
+  }
+  const targetLanguage = form.querySelector('[data-field="targetLanguage"]')?.value || "English";
+  form.closest(".ai-chat-message")?.remove();
+  await createNarrationInChat(source.text, { targetLanguage, sourceId });
+}
+
+async function createNarrationInChat(text, options = {}) {
+  const { targetLanguage = "English", triggerButton = null, sourceId = null } = options;
   dismissPendingChatOpSetups();
   const plain = (text || "").trim();
   if (!narrateSpeechUrl) {
@@ -2241,7 +2750,7 @@ async function createNarrationInChat(text, triggerButton = null) {
   if (triggerButton) triggerButton.disabled = true;
   const controller = new AbortController();
   const typingNode = appendAiTypingPlaceholder(controller);
-  setOcrStatus("info", "Metin Gemini TTS ile seslendiriliyor...", { loading: true });
+  setOcrStatus("info", "Preparing narration...", { loading: true });
   try {
     const r = await fetch(narrateSpeechUrl, {
       method: "POST",
@@ -2249,7 +2758,7 @@ async function createNarrationInChat(text, triggerButton = null) {
         "Content-Type": "application/json",
         RequestVerificationToken: antiForgeryToken,
       },
-      body: JSON.stringify({ documentId, text: plain }),
+      body: JSON.stringify({ documentId, text: plain, targetLanguage }),
       signal: controller.signal,
     });
     const ct = (r.headers.get("content-type") || "").toLowerCase();
@@ -2266,39 +2775,100 @@ async function createNarrationInChat(text, triggerButton = null) {
       } catch {
         /* yoksay */
       }
-      setOcrStatus("error", msg);
       replaceWithAiMessage(typingNode, { text: msg, isError: true });
+      clearOcrStatus();
       return;
     }
     if (!ct.includes("audio")) {
       const msg = "Unexpected response (not an audio file).";
-      setOcrStatus("error", msg);
       replaceWithAiMessage(typingNode, { text: msg, isError: true });
+      clearOcrStatus();
       return;
     }
     const aiResultId = r.headers.get("x-ai-result-id") || "";
     const audioUrl = r.headers.get("x-audio-url") || "";
     const blob = await r.blob();
     typingNode?.remove();
-    appendChatNarrationMessage(audioUrl || blob, plain, { aiResultId, audioUrl });
+    appendChatNarrationMessage(audioUrl || blob, plain, { aiResultId, audioUrl, targetLanguage });
     clearOcrStatus();
   } catch (e) {
     if (e?.name === "AbortError") {
-      setOcrStatus("info", "Narration cancelled.");
       replaceWithAiMessage(typingNode, { text: "⏹ Narration cancelled by user." });
+      clearOcrStatus();
       return;
     }
     const msg = e?.message || "An error occurred during the narration request.";
-    setOcrStatus("error", msg.length > 240 ? `${msg.slice(0, 240)}...` : msg);
     replaceWithAiMessage(typingNode, { text: msg, isError: true });
+    clearOcrStatus();
   } finally {
     if (triggerButton) triggerButton.disabled = false;
   }
 }
 
+const btnExtractTextFromImage = document.getElementById("btn-extract-text-from-image");
+async function extractTextFromCapturedImage() {
+  if (!capturedImage?.base64) {
+    setOcrStatus("error", "No captured image found.");
+    return;
+  }
+  if (!aiProcessUrl || !documentId) {
+    setOcrStatus("error", "AI endpoint is not configured.");
+    return;
+  }
+  dismissPendingChatOpSetups();
+  if (btnExtractTextFromImage) btnExtractTextFromImage.disabled = true;
+  setOcrStatus("info", "Extracting text from image with AI...", { loading: true });
+  try {
+    const r = await fetch(aiProcessUrl, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        RequestVerificationToken: antiForgeryToken,
+      },
+      body: JSON.stringify({
+        documentId,
+        operationType: "Rewrite",
+        modelName: aiModel?.value || defaultAiModel,
+        targetLanguage: "English",
+        style: "Formal",
+        customInstruction:
+          "TRANSCRIPTION ONLY: Extract every visible character from the attached image exactly as printed. Preserve line breaks, columns, tabs, and reading order. Do NOT translate, summarize, rewrite, or add commentary. Output ONLY the raw extracted text.",
+        inputText: "",
+        inputImageBase64: capturedImage.base64,
+        inputImageMimeType: capturedImage.mimeType || "image/png",
+        sourcePageNumber: currentRect?.pageNumber || currentPage,
+      }),
+    });
+    const res = await r.json();
+    if (!res.ok) {
+      setOcrStatus("error", res.message || "Text extraction failed.");
+      return;
+    }
+    const text = (res.outputText || "").trim();
+    if (!text) {
+      setOcrStatus("error", "No text could be extracted from the image.");
+      return;
+    }
+    if (ocrTextarea) ocrTextarea.value = text;
+    textSourceId = createAiChatSource({ contentText: text });
+    lastOcrChatSourceId = textSourceId;
+    refreshComposeState({ pulse: true, justAdded: "text" });
+    setOcrStatus("success", "Text extracted from image.");
+    saveWsStateDebounced();
+  } catch (e) {
+    setOcrStatus("error", e?.message || "Text extraction failed.");
+  } finally {
+    if (btnExtractTextFromImage) btnExtractTextFromImage.disabled = false;
+  }
+}
+
+if (btnExtractTextFromImage) {
+  btnExtractTextFromImage.addEventListener("click", () => extractTextFromCapturedImage());
+}
+
 if (btnNarrateOcrSpeech && ocrTextarea) {
   btnNarrateOcrSpeech.addEventListener("click", () => {
-    createNarrationInChat(ocrTextarea.value || "", btnNarrateOcrSpeech);
+    createNarrationInChat(ocrTextarea.value || "", { triggerButton: btnNarrateOcrSpeech });
   });
 }
 
@@ -2391,7 +2961,7 @@ if (btnAiProcess) {
       .then((r) => r.json())
       .then((res) => {
         if (!res.ok) {
-          setAiStatus("error", res.message || "AI operation failed.");
+          clearAiStatus();
           replaceWithAiMessage(typingNode, {
             text: res.message || "AI operation failed.",
             isError: true,
@@ -2410,7 +2980,7 @@ if (btnAiProcess) {
         }
       })
       .catch(() => {
-        setAiStatus("error", "An error occurred during the AI request.");
+        clearAiStatus();
         replaceWithAiMessage(typingNode, {
           text: "An error occurred during the AI request.",
           isError: true,

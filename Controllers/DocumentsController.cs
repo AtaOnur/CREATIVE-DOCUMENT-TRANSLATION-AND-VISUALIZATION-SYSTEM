@@ -317,11 +317,35 @@ public class DocumentsController : Controller
 
         try
         {
-            var result = await _geminiTtsSpeech.SynthesizeAsync(plain, cancellationToken);
+            var textToSpeak = plain;
+            var targetLang = (request.TargetLanguage ?? "English").Trim();
+            if (!string.IsNullOrWhiteSpace(targetLang) &&
+                !targetLang.Equals("Auto", StringComparison.OrdinalIgnoreCase))
+            {
+                var workspace = await _documentService.GetWorkspaceAsync(User.Identity!.Name!, documentId, cancellationToken);
+                var ai = _services.GetRequiredService<IAiService>();
+                var translated = await ai.ProcessAsync(
+                    workspace?.Title ?? "Document",
+                    new AiProcessRequestViewModel
+                    {
+                        DocumentId = documentId,
+                        OperationType = "Translate",
+                        TargetLanguage = targetLang,
+                        InputText = plain,
+                        ModelName = _configuration["Ai:Gemini:DefaultModel"] ?? "gemini-2.5-flash",
+                        Style = "Formal",
+                    },
+                    cancellationToken);
+                if (!string.IsNullOrWhiteSpace(translated.OutputText))
+                    textToSpeak = translated.OutputText.Trim();
+            }
+
+            var ttsLangCode = MapLanguageToTtsCode(targetLang);
+            var result = await _geminiTtsSpeech.SynthesizeAsync(textToSpeak, ttsLangCode, cancellationToken);
             var save = await _documentService.SaveNarrationResultAsync(
                 User.Identity!.Name!,
                 documentId,
-                plain,
+                textToSpeak,
                 result.AudioBytes,
                 result.ContentType,
                 cancellationToken);
@@ -353,6 +377,30 @@ public class DocumentsController : Controller
 
         var lastSegment = uri.Segments.LastOrDefault()?.Trim('/');
         return Guid.TryParse(lastSegment, out var id) ? id : null;
+    }
+
+    /// <summary>Gemini TTS speechConfig.languageCode için UI dil adını BCP-47 koduna çevirir.</summary>
+    private static string? MapLanguageToTtsCode(string? language)
+    {
+        if (string.IsNullOrWhiteSpace(language) || language.Equals("Auto", StringComparison.OrdinalIgnoreCase))
+            return null;
+
+        return language.Trim().ToLowerInvariant() switch
+        {
+            "english" => "en-US",
+            "turkish" => "tr-TR",
+            "german" => "de-DE",
+            "french" => "fr-FR",
+            "spanish" => "es-ES",
+            "italian" => "it-IT",
+            "portuguese" => "pt-BR",
+            "russian" => "ru-RU",
+            "arabic" => "ar-XA",
+            "chinese" => "cmn-CN",
+            "japanese" => "ja-JP",
+            "korean" => "ko-KR",
+            _ => null,
+        };
     }
 
     /// <summary>Düzenlenmiş OCR metnini veritabanına kaydeder.</summary>

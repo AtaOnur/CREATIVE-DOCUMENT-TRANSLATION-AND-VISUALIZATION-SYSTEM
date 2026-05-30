@@ -26,5 +26,8 @@ public interface IGeminiTtsSpeechService
     /// <summary>
     /// [TR] Gemini TTS önizleme/üretim modeli ile generateContent çağırır (responseModalities: AUDIO).
     /// </summary>
-    Task<GeminiSpeechSynthesisResult> SynthesizeAsync(string plainText, CancellationToken cancellationToken = default);
+    Task<GeminiSpeechSynthesisResult> SynthesizeAsync(
+        string plainText,
+        string? languageCode = null,
+        CancellationToken cancellationToken = default);
 }
