@@ -126,26 +126,30 @@
                                 <span id="region-toast-text">Done</span>
                             </div>
                             <div class="region-popup__actions">
-                                <button type="button" class="region-popup__btn" data-region-action="extract">
-                                    <span aria-hidden="true">🔤</span> Extract text (OCR)
+                                <button type="button" class="region-popup__btn" data-region-action="copy">
+                                    <span aria-hidden="true">📋</span> Copy image to clipboard
                                 </button>
                                 <button type="button" class="region-popup__btn" data-region-action="image">
                                     <span aria-hidden="true">🏞️</span> Select as image
                                 </button>
-                                <button type="button" class="region-popup__btn" data-region-action="copy">
-                                    <span aria-hidden="true">📋</span> Copy image to clipboard
-                                </button>
                             </div>
-                            <div class="region-popup__engines">
-                                <div class="region-popup__engines-label">How should the text be read?</div>
-                                <button type="button" class="region-engine-opt is-active" data-engine="Paddle">
-                                    <span class="region-engine-opt__name">PaddleOCR</span>
-                                    <span class="region-engine-opt__desc">Detects the region better</span>
+                            <div class="region-popup__ocr-group">
+                                <button type="button" class="region-popup__btn region-popup__btn--extract" data-region-action="extract">
+                                    <span aria-hidden="true">🔤</span> Extract text (OCR)
                                 </button>
-                                <button type="button" class="region-engine-opt" data-engine="Tesseract">
-                                    <span class="region-engine-opt__name">Tesseract</span>
-                                    <span class="region-engine-opt__desc">Faster, medium-quality result</span>
-                                </button>
+                                <div class="region-popup__engines">
+                                    <div class="region-popup__engines-label">OCR engine option</div>
+                                    <div class="region-popup__engines-row" role="radiogroup" aria-label="OCR engine option">
+                                        <button type="button" class="region-engine-opt is-active" data-engine="Paddle" role="radio" aria-checked="true">
+                                            <span class="region-engine-opt__dot" aria-hidden="true"></span>
+                                            <span class="region-engine-opt__name">Paddle</span>
+                                        </button>
+                                        <button type="button" class="region-engine-opt" data-engine="Tesseract" role="radio" aria-checked="false">
+                                            <span class="region-engine-opt__dot" aria-hidden="true"></span>
+                                            <span class="region-engine-opt__name">Tesseract</span>
+                                        </button>
+                                    </div>
+                                </div>
                             </div>
                         </div>
                     </div>

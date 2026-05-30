@@ -1595,7 +1595,7 @@ function showRegionPopup() {
   regionPopup.classList.remove("d-none");
   // [TR] Önce görünür yap, sonra ölç (offsetHeight/Width d-none iken 0 olur).
   const ph = regionPopup.offsetHeight || 96;
-  const pw = regionPopup.offsetWidth || 300;
+  const pw = regionPopup.offsetWidth || 248;
   const gap = 8;
 
   const visLeft = viewerFrame ? viewerFrame.scrollLeft : 0;
@@ -1659,9 +1659,11 @@ if (regionPopup) {
     if (eng) {
       selectedOcrEngine = eng.dataset.engine || "Paddle";
       if (ocrEngineSelect) ocrEngineSelect.value = selectedOcrEngine;
-      regionPopup.querySelectorAll(".region-engine-opt").forEach((b) =>
-        b.classList.toggle("is-active", b === eng)
-      );
+      regionPopup.querySelectorAll(".region-engine-opt").forEach((b) => {
+        const active = b === eng;
+        b.classList.toggle("is-active", active);
+        b.setAttribute("aria-checked", active ? "true" : "false");
+      });
       return;
     }
     const act = ev.target?.closest?.("[data-region-action]");

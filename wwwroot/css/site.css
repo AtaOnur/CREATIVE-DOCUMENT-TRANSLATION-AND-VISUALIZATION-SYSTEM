@@ -617,97 +617,132 @@ body.workspace-resizing {
   padding: 0.6rem 0.75rem;
 }
 
-/* [TR] Bölge seçilince seçimin üstünde çıkan hızlı işlem menüsü. */
+/* [TR] Bölge seçilince seçimin yanında çıkan hızlı işlem menüsü — site yeşili (seçim renginden koyu ton). */
 .region-popup {
   position: absolute;
   z-index: 25;
-  background: #1f2733;
-  color: #fff;
-  border-radius: 0.6rem;
-  padding: 0.5rem;
-  box-shadow: 0 0.5rem 1.25rem rgba(0, 0, 0, 0.35);
-  /* [TR] Sabit genişlik: butonlar (Extract/Select/Copy) artık siyah alanın
-   *      DIŞINA taşmaz, hepsi kutu içinde kalır. */
-  width: 300px;
+  background: linear-gradient(165deg, #0f3d4c 0%, #134e4a 100%);
+  color: #ecfdf5;
+  border: 1px solid rgba(45, 212, 191, 0.22);
+  border-radius: 0.65rem;
+  padding: 0.45rem;
+  box-shadow: 0 0.45rem 1.1rem rgba(15, 61, 76, 0.28);
+  width: 248px;
   max-width: 92vw;
   box-sizing: border-box;
 }
 
-/* [TR] İşlem butonları sarmalanır: ilk iki buton yan yana, "panoya kopyala"
- *      tam genişlikte alta geçer; hiçbiri siyah alanın dışına taşmaz. */
 .region-popup__actions {
   display: flex;
-  flex-wrap: wrap;
-  gap: 0.35rem;
-  margin-bottom: 0.45rem;
+  flex-direction: column;
+  gap: 0.32rem;
+  margin-bottom: 0.38rem;
+}
+
+.region-popup__ocr-group {
+  border: 1px solid rgba(167, 243, 208, 0.35);
+  border-radius: 0.5rem;
+  padding: 0.32rem;
+  background: rgba(255, 255, 255, 0.04);
 }
 
 .region-popup__btn {
-  flex: 1 1 calc(50% - 0.2rem);
-  min-width: 0;
-  border: 0;
-  border-radius: 0.4rem;
-  background: rgba(255, 255, 255, 0.12);
-  color: #fff;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.35rem;
+  width: 100%;
+  border: 1px solid rgba(167, 243, 208, 0.18);
+  border-radius: 0.45rem;
+  background: rgba(255, 255, 255, 0.08);
+  color: #ecfdf5;
   font-size: 0.74rem;
   font-weight: 600;
-  padding: 0.35rem 0.5rem;
+  padding: 0.42rem 0.55rem;
   cursor: pointer;
-  white-space: normal;
+  white-space: nowrap;
   text-align: center;
 }
 
-/* [TR] "Copy image to clipboard" tek başına alt satırda tam genişlik. */
-.region-popup__btn[data-region-action="copy"] {
-  flex: 1 1 100%;
+.region-popup__btn--extract {
+  margin-bottom: 0.32rem;
 }
 
 .region-popup__btn:hover {
-  background: rgba(255, 255, 255, 0.22);
+  background: rgba(167, 243, 208, 0.16);
+  border-color: rgba(167, 243, 208, 0.32);
+}
+
+.region-popup__engines {
+  margin-top: 0;
+  padding-top: 0;
+  border-top: 0;
 }
 
 .region-popup__engines-label {
-  font-size: 0.68rem;
-  opacity: 0.8;
-  margin-bottom: 0.3rem;
+  font-size: 0.58rem;
+  font-weight: 600;
+  letter-spacing: 0.03em;
+  text-transform: uppercase;
+  opacity: 0.85;
+  margin-bottom: 0.28rem;
+}
+
+
+.region-popup__engines-row {
+  display: flex;
+  gap: 0.28rem;
 }
 
 .region-engine-opt {
-  display: flex;
-  flex-direction: column;
-  align-items: flex-start;
-  width: 100%;
-  text-align: left;
-  border: 1px solid rgba(255, 255, 255, 0.18);
-  background: transparent;
-  color: #fff;
-  border-radius: 0.4rem;
-  padding: 0.3rem 0.5rem;
-  margin-bottom: 0.3rem;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.22rem;
+  flex: 1 1 0;
+  min-width: 0;
+  border: 1px dashed rgba(167, 243, 208, 0.35);
+  background: rgba(255, 255, 255, 0.05);
+  color: #ecfdf5;
+  border-radius: 0.38rem;
+  padding: 0.2rem 0.3rem;
   cursor: pointer;
 }
 
-.region-engine-opt:last-child {
-  margin-bottom: 0;
-}
-
 .region-engine-opt:hover {
-  background: rgba(255, 255, 255, 0.1);
+  background: rgba(167, 243, 208, 0.1);
+  border-style: solid;
 }
 
 .region-engine-opt.is-active {
-  border-color: #34d399;
-  background: rgba(52, 211, 153, 0.18);
+  border-style: solid;
+  border-color: #5eead4;
+  background: rgba(45, 212, 191, 0.18);
+  color: #fff;
+}
+
+.region-engine-opt__dot {
+  width: 0.45rem;
+  height: 0.45rem;
+  border-radius: 50%;
+  border: 1.5px solid rgba(236, 253, 245, 0.65);
+  flex: 0 0 auto;
+}
+
+.region-engine-opt.is-active .region-engine-opt__dot {
+  border-color: #5eead4;
+  background: #5eead4;
+  box-shadow: 0 0 0 1px rgba(15, 61, 76, 0.15);
 }
 
 .region-engine-opt__name {
-  font-size: 0.78rem;
+  font-size: 0.62rem;
   font-weight: 700;
+  line-height: 1.1;
 }
 
 .region-engine-opt__desc {
-  font-size: 0.66rem;
-  opacity: 0.82;
+  display: none;
 }
 
 /* [TR] Mobilde (lg altı) yüzen panel statik akışa düşer; tutamak gizlenir. */
@@ -1585,7 +1620,7 @@ label[for="ocr-text-placeholder"] {
   }
 }
 
-/* [TR] Balon içi "işlem" bölmesi — reaksiyonlardan ayrı, katlanabilir. */
+/* [TR] Balon içi "Run another operation on this" — mor tema (workspace yeşilinden ayrı). */
 .ai-chat-ops-divider {
   border-top-color: rgba(124, 58, 237, 0.4);
 }
