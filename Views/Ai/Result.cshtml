@@ -1,6 +1,7 @@
 @model pdf_bitirme.Models.ViewModels.AiResultPageViewModel
 @{
     ViewData["Title"] = "AI Result";
+    var isAdminModerationView = ViewBag.IsAdminModerationView as bool? == true;
 }
 
 @*
@@ -14,13 +15,21 @@
     - AI sohbet kartı: tarayıcı localStorage (pdf-workspace ile aynı anahtar); ai-result-chat-history.mjs.
     - Visualize çıktısı için overlay export seçenekleri eklenebilir.
     - TTS sonucu varsa detay sayfasında HTML5 audio player ile oynatılır.
+    - ViewBag.IsAdminModerationView: admin moderasyon görünümü; Save/Regenerate gizlenir, Admin belgeye dönüş.
     - Genel image-to-text işlemi bu modülün kapsamında değildir.
 *@
 
 <div class="container py-4">
     <div class="d-flex justify-content-between align-items-center mb-3">
         <h1 class="h4 fw-bold mb-0">AI Result Details</h1>
-        <a class="btn btn-outline-secondary btn-sm" asp-controller="Documents" asp-action="Details" asp-route-id="@Model.DocumentId">Back to Document</a>
+        @if (isAdminModerationView)
+        {
+            <a class="btn btn-outline-secondary btn-sm" asp-controller="Admin" asp-action="DocumentDetails" asp-route-id="@Model.DocumentId">Back to Admin Document</a>
+        }
+        else
+        {
+            <a class="btn btn-outline-secondary btn-sm" asp-controller="Documents" asp-action="Details" asp-route-id="@Model.DocumentId">Back to Document</a>
+        }
     </div>
 
     <div class="card border-0 shadow-sm">
@@ -63,19 +72,26 @@
             }
 
             <div class="d-flex flex-wrap gap-2">
-                <form asp-action="Save" method="post" data-loading-form="true">
-                    @Html.AntiForgeryToken()
-                    <input type="hidden" name="id" value="@Model.AiResultId" />
-                    <button type="submit" class="btn btn-success btn-sm" @(Model.IsSaved ? "disabled" : "")>Save</button>
-                </form>
+                @if (!isAdminModerationView)
+                {
+                    <form asp-action="Save" method="post" data-loading-form="true">
+                        @Html.AntiForgeryToken()
+                        <input type="hidden" name="id" value="@Model.AiResultId" />
+                        <button type="submit" class="btn btn-success btn-sm" @(Model.IsSaved ? "disabled" : "")>Save</button>
+                    </form>
 
-                <form asp-action="Regenerate" method="post" data-loading-form="true">
-                    @Html.AntiForgeryToken()
-                    <input type="hidden" name="id" value="@Model.AiResultId" />
-                    <button type="submit" class="btn btn-outline-primary btn-sm">Regenerate</button>
-                </form>
+                    <form asp-action="Regenerate" method="post" data-loading-form="true">
+                        @Html.AntiForgeryToken()
+                        <input type="hidden" name="id" value="@Model.AiResultId" />
+                        <button type="submit" class="btn btn-outline-primary btn-sm">Regenerate</button>
+                    </form>
 
-                <a class="btn btn-outline-secondary btn-sm" asp-controller="Documents" asp-action="Details" asp-route-id="@Model.DocumentId">Back to Document</a>
+                    <a class="btn btn-outline-secondary btn-sm" asp-controller="Documents" asp-action="Details" asp-route-id="@Model.DocumentId">Back to Document</a>
+                }
+                else
+                {
+                    <a class="btn btn-outline-secondary btn-sm" asp-controller="Admin" asp-action="DocumentDetails" asp-route-id="@Model.DocumentId">Back to Admin Document</a>
+                }
             </div>
         </div>
     </div>

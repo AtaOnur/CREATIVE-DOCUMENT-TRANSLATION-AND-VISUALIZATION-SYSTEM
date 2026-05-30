@@ -1,6 +1,7 @@
 @model pdf_bitirme.Models.ViewModels.AiResultPageViewModel
 @{
     ViewData["Title"] = "Notebook Details";
+    var isAdminModerationView = ViewBag.IsAdminModerationView as bool? == true;
 }
 
 @*
@@ -12,13 +13,21 @@
     - Gelecekte onceki surumlerle karsilastirma alani eklenebilir.
     - Favori/etiket rozeti eklenebilir.
     - TTS kayitlari icin detayda audio player gosterilir.
+    - ViewBag.IsAdminModerationView: admin moderasyon görünümü; Edit/Delete gizlenir.
     - Genel resim OCR destegi bu surumde yer almamaktadir.
 *@
 
 <div class="container py-4">
     <div class="d-flex justify-content-between align-items-center mb-3">
         <h1 class="h4 fw-bold mb-0">Notebook Entry Details</h1>
-        <a class="btn btn-outline-secondary btn-sm" asp-action="Index">Back to Notebook</a>
+        @if (isAdminModerationView)
+        {
+            <a class="btn btn-outline-secondary btn-sm" asp-controller="Admin" asp-action="DocumentDetails" asp-route-id="@Model.DocumentId">Back to Admin Document</a>
+        }
+        else
+        {
+            <a class="btn btn-outline-secondary btn-sm" asp-action="Index">Back to Notebook</a>
+        }
     </div>
 
     <div class="card border-0 shadow-sm">
@@ -50,13 +59,20 @@
                 </div>
             }
             <div class="d-flex flex-wrap gap-2">
-                <a class="btn btn-outline-primary btn-sm" asp-action="Edit" asp-route-id="@Model.AiResultId">Edit Note</a>
-                <a class="btn btn-outline-secondary btn-sm" asp-controller="Documents" asp-action="Details" asp-route-id="@Model.DocumentId">Back to Document</a>
-                <form asp-action="Delete" method="post" data-loading-form="true">
-                    @Html.AntiForgeryToken()
-                    <input type="hidden" name="id" value="@Model.AiResultId" />
-                    <button type="submit" class="btn btn-outline-danger btn-sm">Delete</button>
-                </form>
+                @if (!isAdminModerationView)
+                {
+                    <a class="btn btn-outline-primary btn-sm" asp-action="Edit" asp-route-id="@Model.AiResultId">Edit Note</a>
+                    <a class="btn btn-outline-secondary btn-sm" asp-controller="Documents" asp-action="Details" asp-route-id="@Model.DocumentId">Back to Document</a>
+                    <form asp-action="Delete" method="post" data-loading-form="true">
+                        @Html.AntiForgeryToken()
+                        <input type="hidden" name="id" value="@Model.AiResultId" />
+                        <button type="submit" class="btn btn-outline-danger btn-sm">Delete</button>
+                    </form>
+                }
+                else
+                {
+                    <a class="btn btn-outline-secondary btn-sm" asp-controller="Admin" asp-action="DocumentDetails" asp-route-id="@Model.DocumentId">Back to Admin Document</a>
+                }
             </div>
         </div>
     </div>

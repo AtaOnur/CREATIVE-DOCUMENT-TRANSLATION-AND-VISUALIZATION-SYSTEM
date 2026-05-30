@@ -1,0 +1,43 @@
+@model pdf_bitirme.Models.ViewModels.DocumentBannedViewModel
+@{
+    ViewData["Title"] = "Belge Erişimi Engellendi";
+}
+
+@*
+    [TR] Bu dosya ne işe yarar: Admin tarafından banlanan belgeye sahibi kullanıcı girmeye çalışınca gösterilen uyarı ekranı.
+    [TR] Neden gerekli: 404 yerine topluluk kuralları ihlali mesajı; moderasyon gerekçesi varsa gösterilir.
+    [TR] İlgili: DocumentsController.Details, DocumentService.GetOwnerDocumentAccessAsync
+
+    MODIFICATION NOTES (TR)
+    - BanReason boşsa yalnızca genel mesaj gösterilir.
+    - İleride itiraz / destek bağlantısı eklenebilir.
+    - Zorluk: Kolay.
+*@
+
+<div class="container py-5">
+    <div class="card border-0 shadow-sm mx-auto" style="max-width: 42rem;">
+        <div class="card-body p-4 text-center">
+            <h1 class="h4 fw-bold text-danger mb-2">Bu belge topluluk kurallarına aykırı olduğu için banlandı</h1>
+            <p class="text-muted mb-3">
+                @if (!string.IsNullOrWhiteSpace(Model.Title))
+                {
+                    <span><strong>@Model.Title</strong> adlı belgeye erişiminiz kaldırılmıştır.</span>
+                }
+                else
+                {
+                    <span>Bu belgeye erişiminiz kaldırılmıştır.</span>
+                }
+            </p>
+            @if (!string.IsNullOrWhiteSpace(Model.BanReason))
+            {
+                <div class="alert alert-light border text-start small mb-4" role="status">
+                    <strong>Moderasyon notu:</strong> @Model.BanReason
+                </div>
+            }
+            <p class="small text-muted mb-4">
+                Sorularınız için destek ekibiyle iletişime geçebilirsiniz.
+            </p>
+            <a class="btn btn-accent" asp-action="Index">Belgelere dön</a>
+        </div>
+    </div>
+</div>

@@ -14,6 +14,7 @@ namespace pdf_bitirme.Controllers;
  * - Klasor, etiket, favori ve export ozellikleri ileride eklenebilir.
  * - Isbirligi (collaboration) bu surumde yoktur.
  * - Genel resim OCR destegi bu surumde yer almamaktadir.
+ * - Details: Admin rolünde notebook/AI sonucu sahiplik filtresi olmadan görüntülenir.
  * - Zorluk: Orta.
  */
 [Authorize]
@@ -37,11 +38,14 @@ public class NotebookController : Controller
     [HttpGet]
     public async Task<IActionResult> Details(Guid id, CancellationToken cancellationToken)
     {
-        var email = User.Identity!.Name!;
-        var model = await _documentService.GetNotebookDetailsAsync(email, id, cancellationToken);
+        var isAdmin = User.IsInRole("Admin");
+        var model = isAdmin
+            ? await _documentService.GetAiResultPageByIdAsync(id, cancellationToken)
+            : await _documentService.GetNotebookDetailsAsync(User.Identity!.Name!, id, cancellationToken);
         if (model == null)
             return NotFound();
 
+        ViewBag.IsAdminModerationView = isAdmin;
         return View(model);
     }
 

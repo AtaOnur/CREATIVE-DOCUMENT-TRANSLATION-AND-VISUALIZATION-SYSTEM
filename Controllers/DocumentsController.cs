@@ -17,6 +17,8 @@ namespace pdf_bitirme.Controllers;
  * - Belge önizleme ve PDF içi bölge seçimi; OCR yalnızca seçili bölgede çalışır.
  * - Ocr:UseMock=false ayarıyla gerçek Tesseract OCR servisine geçiş desteklenir.
  * - NarrateOcrSpeech: OCR textarea metnini Gemini TTS ile sese çevirir (Paddle/Tesseract OCR’dan bağımsız).
+ * - Details: banlı belge → Banned.cshtml; ilk belge → ShowWorkspaceGuide.
+ * - DismissWorkspaceGuide: workspace rehberi kapatılınca user_settings.WorkspaceGuideCompleted güncellenir.
  * - Genel görüntü OCR future work.
  * - Zorluk: Orta.
  */
@@ -150,6 +152,19 @@ public class DocumentsController : Controller
     public async Task<IActionResult> Details(Guid id, CancellationToken cancellationToken)
     {
         var email = User.Identity!.Name!;
+        var access = await _documentService.GetOwnerDocumentAccessAsync(email, id, cancellationToken);
+        if (access.Status == OwnerDocumentAccessStatus.NotFound)
+            return NotFound();
+        if (access.Status == OwnerDocumentAccessStatus.Banned)
+        {
+            return View("Banned", new DocumentBannedViewModel
+            {
+                Id = id,
+                Title = access.Title,
+                BanReason = access.BanReason,
+            });
+        }
+
         var model = await _documentService.GetWorkspaceAsync(email, id, cancellationToken);
         if (model == null)
             return NotFound();
@@ -161,6 +176,16 @@ public class DocumentsController : Controller
         // [TR] OCR textarea’daki yazı NarrateOcrSpeech ile gönderilir; OCR motor seçimi ile ilgisi yoktur (sadece metin).
         model.NarrateSpeechEndpointUrl = Url.Action(nameof(NarrateOcrSpeech)) ?? string.Empty;
         return View(model);
+    }
+
+    /// <summary>First-time workspace onboarding guide — shown once per user on their first document.</summary>
+    [HttpPost]
+    [ValidateAntiForgeryToken]
+    public async Task<IActionResult> DismissWorkspaceGuide(CancellationToken cancellationToken)
+    {
+        var email = User.Identity!.Name!;
+        await _documentService.MarkWorkspaceGuideCompletedAsync(email, cancellationToken);
+        return Ok(new { ok = true });
     }
 
     /// <summary>Workspace içindeki PDF görüntüleme isteği için dosya akışı döner.</summary>

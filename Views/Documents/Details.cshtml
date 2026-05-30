@@ -17,6 +17,8 @@
     - AI panelinde yeni model seçenekleri ve karşılaştırma görünümü eklenebilir.
     - Genel image-to-text işlemi bu modülün kapsamında değildir.
     - Genel resimden metin çıkarma özelliği bu sürümde bulunmamaktadır; future work olarak düşünülmüştür.
+    - #workspace-guide-modal: ilk belgede otomatik 5 adımlı rehber; Functions kolonundaki Help (?) ile tekrar açılır.
+    - data-show-workspace-guide / data-dismiss-guide-url: pdf-workspace.mjs initWorkspaceGuide ile bağlı.
     - Zorluk: Orta.
 *@
 @model pdf_bitirme.Models.ViewModels.DocumentWorkspaceViewModel
@@ -45,7 +47,9 @@
          data-default-ai-model="@Model.DefaultAiModel"
          data-default-style="@Model.DefaultTranslationStyle"
          data-current-page="@Model.CurrentPage"
-         data-zoom="@Model.ZoomPercent">
+         data-zoom="@Model.ZoomPercent"
+         data-show-workspace-guide="@(Model.ShowWorkspaceGuide ? "true" : "false")"
+         data-dismiss-guide-url="@(Url.Action("DismissWorkspaceGuide") ?? "")">
 
         @*
             [TR] workspace-body: mobilde üst-alt (PDF, sonra sağ panel), lg+ yatay iki sütun.
@@ -312,6 +316,82 @@
 <div id="image-lightbox" class="image-lightbox d-none" role="dialog" aria-modal="true" aria-label="Image preview">
     <button type="button" class="image-lightbox__close" id="image-lightbox-close" aria-label="Close">×</button>
     <img id="image-lightbox-img" class="image-lightbox__img" alt="Enlarged preview" />
+</div>
+
+@*
+    [TR] Workspace rehberi — ilk belgede otomatik; Functions rayındaki Help ile istenince tekrar açılır.
+    [TR] İlgili: initWorkspaceGuide (pdf-workspace.mjs), DismissWorkspaceGuide
+*@
+<div class="modal fade workspace-guide-modal" id="workspace-guide-modal" tabindex="-1"
+     aria-labelledby="workspace-guide-title" aria-hidden="true">
+    <div class="modal-dialog modal-dialog-centered modal-dialog-scrollable modal-lg">
+        <div class="modal-content border-0 shadow-lg">
+            <div class="modal-header border-0 pb-0">
+                <div>
+                    <p class="text-muted small mb-1">Workspace guide</p>
+                    <h2 class="modal-title h4 fw-bold" id="workspace-guide-title">How to use the workspace</h2>
+                </div>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <div class="modal-body pt-3">
+                <p class="text-muted mb-4">
+                    Follow these steps to work with your document. You can open this guide again anytime from the <strong>?</strong> button.
+                </p>
+                <ol class="workspace-guide-steps list-unstyled mb-0">
+                    <li class="workspace-guide-step">
+                        <span class="workspace-guide-step__num">1</span>
+                        <div>
+                            <strong>Select an area on the PDF</strong>
+                            <p class="mb-0 small text-muted">Click and drag with your mouse over the part of the page you want to work on.</p>
+                        </div>
+                    </li>
+                    <li class="workspace-guide-step">
+                        <span class="workspace-guide-step__num">2</span>
+                        <div>
+                            <strong>Choose image or text, and pick an OCR engine</strong>
+                            <p class="mb-0 small text-muted">A menu appears on your selection. Pick <em>Select as image</em> or <em>Extract text (OCR)</em>, then choose <strong>Paddle</strong> or <strong>Tesseract</strong>.</p>
+                        </div>
+                    </li>
+                    <li class="workspace-guide-step">
+                        <span class="workspace-guide-step__num">3</span>
+                        <div>
+                            <strong>Edit the text if needed</strong>
+                            <p class="mb-0 small text-muted">If the OCR text is wrong, fix it in the text box at the bottom right of the panel.</p>
+                        </div>
+                    </li>
+                    <li class="workspace-guide-step">
+                        <span class="workspace-guide-step__num">4</span>
+                        <div>
+                            <strong>Pick a function from the menu on the right</strong>
+                            <p class="mb-2 small text-muted">Open the vertical <strong>Functions</strong> menu on the right side of the screen, then choose what you want to do:</p>
+                            <ul class="workspace-guide-fn-list small text-muted mb-0">
+                                <li><strong>Translate</strong> — translate the selected text</li>
+                                <li><strong>Summarize</strong> — shorten the text</li>
+                                <li><strong>Rewrite</strong> — rewrite in a different style</li>
+                                <li><strong>Creative</strong> — creative writing from your content</li>
+                                <li><strong>Explain</strong> — explain text or image</li>
+                                <li><strong>Visualize</strong> — create a visual from your content</li>
+                                <li><strong>Math</strong> — math or chart help</li>
+                                <li><strong>Narrate</strong> — turn text into voice</li>
+                            </ul>
+                        </div>
+                    </li>
+                    <li class="workspace-guide-step">
+                        <span class="workspace-guide-step__num">5</span>
+                        <div>
+                            <strong>Set options and run</strong>
+                            <p class="mb-0 small text-muted">A panel opens next to the function menu. Choose your model and settings, add a custom instruction if you want, then press <strong>Run</strong>. Your result appears in the chat. To do more, select a new area or change the text and repeat.</p>
+                        </div>
+                    </li>
+                </ol>
+            </div>
+            <div class="modal-footer border-0 pt-0">
+                <button type="button" class="btn btn-accent px-4" id="btn-workspace-guide-dismiss" data-bs-dismiss="modal">
+                    Got it
+                </button>
+            </div>
+        </div>
+    </div>
 </div>
 
 @section Scripts {

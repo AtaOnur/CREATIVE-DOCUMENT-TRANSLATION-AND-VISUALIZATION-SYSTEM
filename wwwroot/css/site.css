@@ -10,6 +10,8 @@
  * - Workspace #ocr-status / #ai-status: .workspace-status-loading ile spinner + metin flex hizası (pdf-workspace.mjs).
  * - AI Sohbet sağ üst: `.ai-chat-section--side-panel` geniş max-height; OCR `.workspace-ocr-text` daha düşük min-height (Details rows).
  * - AI sonuç sayfası (Result.cshtml): workspace sohbeti localStorage — `.ai-chat-window--result-page`.
+ * - .workspace-help-btn: Functions rayında rehber (?) butonu; .workspace-guide-* modal stilleri.
+ * - .home-* : Home/Index modern landing (hero glow, adım zaman çizelgesi, özellik ızgarası).
  * - Zorluk: Kolay.
  */
 
@@ -129,6 +131,252 @@ html {
   border: 1px solid rgba(15, 61, 76, 0.08);
 }
 
+/* ─── Home landing (Views/Home/Index.cshtml) ─────────────────────────────── */
+.home-landing {
+  background: #f8fafc;
+}
+
+.home-hero {
+  background: linear-gradient(145deg, #156b7a 0%, var(--app-hero-end) 50%, #0a2f38 100%);
+}
+
+.home-hero__glow {
+  position: absolute;
+  border-radius: 50%;
+  filter: blur(80px);
+  opacity: 0.45;
+  pointer-events: none;
+}
+
+.home-hero__glow--one {
+  width: 420px;
+  height: 420px;
+  top: -120px;
+  right: -80px;
+  background: rgba(13, 148, 136, 0.55);
+}
+
+.home-hero__glow--two {
+  width: 320px;
+  height: 320px;
+  bottom: -100px;
+  left: 10%;
+  background: rgba(124, 58, 237, 0.35);
+}
+
+.py-lg-6 {
+  padding-top: 4.5rem !important;
+  padding-bottom: 4.5rem !important;
+}
+
+.home-eyebrow {
+  display: inline-block;
+  font-size: 0.72rem;
+  font-weight: 700;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: rgba(255, 255, 255, 0.75);
+  margin-bottom: 0.75rem;
+}
+
+.home-eyebrow--dark {
+  color: var(--app-accent);
+}
+
+.home-hero__title {
+  line-height: 1.15;
+  letter-spacing: -0.02em;
+}
+
+.home-hero__lead {
+  font-size: 1.12rem;
+  line-height: 1.6;
+  color: rgba(255, 255, 255, 0.88);
+  max-width: 36rem;
+}
+
+.home-trust-pill {
+  display: inline-flex;
+  align-items: center;
+  padding: 0.35rem 0.75rem;
+  border-radius: 999px;
+  font-size: 0.78rem;
+  font-weight: 600;
+  background: rgba(255, 255, 255, 0.12);
+  border: 1px solid rgba(255, 255, 255, 0.18);
+  color: rgba(255, 255, 255, 0.92);
+}
+
+.home-hero-panel {
+  background: rgba(255, 255, 255, 0.97);
+  border: 1px solid rgba(255, 255, 255, 0.4);
+  box-shadow: 0 1.5rem 3rem rgba(0, 0, 0, 0.18);
+  color: #1e293b;
+}
+
+.home-hero-panel__label {
+  font-size: 0.72rem;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--app-accent);
+}
+
+.home-checklist li {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.65rem;
+  padding: 0.45rem 0;
+  font-size: 0.92rem;
+  line-height: 1.45;
+  border-bottom: 1px solid rgba(15, 61, 76, 0.06);
+}
+
+.home-checklist li:last-child {
+  border-bottom: 0;
+}
+
+.home-checklist__icon {
+  flex-shrink: 0;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 1.35rem;
+  height: 1.35rem;
+  border-radius: 50%;
+  background: rgba(13, 148, 136, 0.12);
+  color: var(--app-accent);
+  font-size: 0.75rem;
+  font-weight: 800;
+  margin-top: 0.1rem;
+}
+
+.home-section__title {
+  letter-spacing: -0.02em;
+}
+
+.home-section__subtitle {
+  max-width: 32rem;
+}
+
+.home-stat-tile {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+  padding: 1.1rem 1.15rem;
+  border-radius: 1rem;
+  background: #fff;
+  border: 1px solid rgba(15, 61, 76, 0.08);
+  box-shadow: 0 0.25rem 1rem rgba(15, 61, 76, 0.05);
+  height: 100%;
+}
+
+.home-stat-tile__emoji {
+  font-size: 1.5rem;
+  line-height: 1;
+  margin-bottom: 0.15rem;
+}
+
+.home-steps {
+  display: grid;
+  gap: 0.85rem;
+}
+
+@media (min-width: 768px) {
+  .home-steps {
+    grid-template-columns: repeat(2, 1fr);
+  }
+}
+
+@media (min-width: 992px) {
+  .home-steps {
+    grid-template-columns: repeat(3, 1fr);
+  }
+}
+
+.home-step {
+  display: flex;
+  gap: 1rem;
+  align-items: flex-start;
+  padding: 1.15rem 1.2rem;
+  border-radius: 1rem;
+  background: #fff;
+  border: 1px solid rgba(15, 61, 76, 0.08);
+  box-shadow: 0 0.2rem 0.75rem rgba(15, 61, 76, 0.04);
+  transition: transform 0.15s ease, box-shadow 0.15s ease;
+}
+
+.home-step:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 0.5rem 1.25rem rgba(15, 61, 76, 0.08);
+}
+
+.home-step--highlight {
+  border-color: rgba(13, 148, 136, 0.25);
+  background: linear-gradient(135deg, #fff 0%, rgba(13, 148, 136, 0.06) 100%);
+}
+
+.home-step--help {
+  background: #f1f5f9;
+  border-style: dashed;
+}
+
+.home-step__num {
+  flex-shrink: 0;
+  width: 2.25rem;
+  height: 2.25rem;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 0.65rem;
+  background: var(--app-primary);
+  color: #fff;
+  font-weight: 800;
+  font-size: 0.95rem;
+}
+
+.home-step--highlight .home-step__num {
+  background: var(--app-accent);
+}
+
+.home-step__num--muted {
+  background: #94a3b8;
+  font-size: 1.1rem;
+}
+
+.home-feature-card {
+  padding: 1.35rem 1.25rem;
+  border-radius: 1rem;
+  background: #fff;
+  border: 1px solid rgba(15, 61, 76, 0.08);
+  box-shadow: 0 0.2rem 0.75rem rgba(15, 61, 76, 0.04);
+  transition: transform 0.15s ease, box-shadow 0.15s ease, border-color 0.15s ease;
+}
+
+.home-feature-card:hover {
+  transform: translateY(-3px);
+  border-color: rgba(13, 148, 136, 0.22);
+  box-shadow: 0 0.75rem 1.75rem rgba(15, 61, 76, 0.1);
+}
+
+.home-feature-card__icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 2.75rem;
+  height: 2.75rem;
+  margin-bottom: 0.85rem;
+  border-radius: 0.85rem;
+  background: linear-gradient(135deg, rgba(13, 148, 136, 0.12) 0%, rgba(124, 58, 237, 0.1) 100%);
+  font-size: 1.35rem;
+}
+
+.home-cta {
+  background: linear-gradient(135deg, #fff 0%, #eef7f6 50%, #f5f3ff 100%);
+  border: 1px solid rgba(13, 148, 136, 0.15);
+  box-shadow: 0 0.5rem 2rem rgba(15, 61, 76, 0.06);
+}
+
 /* Kimlik sayfaları — ferah arka plan ve kart */
 .auth-page {
   background: linear-gradient(180deg, #eef2f5 0%, #ffffff 45%, #f8fafb 100%);
@@ -202,7 +450,34 @@ html {
 
 /* Workspace (belge detay) */
 .workspace-page-container {
+  position: relative;
   max-width: min(1880px, calc(100vw - 2rem));
+}
+
+.workspace-help-btn {
+  /* [TR] Functions rayında son fonksiyonun altında; workspace rehberini açar. */
+  margin-top: 0.15rem;
+  border-top: 1px dashed rgba(124, 58, 237, 0.22);
+  padding-top: 0.55rem;
+}
+
+.workspace-help-btn .workspace-fn-btn__icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 1.52rem;
+  height: 1.52rem;
+  border-radius: 50%;
+  border: 1px solid rgba(15, 61, 76, 0.2);
+  font-size: 0.95rem;
+  font-weight: 800;
+  line-height: 1;
+}
+
+.workspace-help-btn:hover:not(:disabled) .workspace-fn-btn__icon,
+.workspace-help-btn:focus-visible .workspace-fn-btn__icon {
+  background: rgba(124, 58, 237, 0.16);
+  border-color: rgba(124, 58, 237, 0.35);
 }
 
 .workspace-shell {
@@ -1973,4 +2248,48 @@ label[for="ocr-text-placeholder"] {
   border-radius: 50%;
   background: rgba(255, 255, 255, 0.25);
   font-size: 0.8rem;
+}
+
+/* [TR] İlk belge workspace rehberi — 5 adım modal; Help ile tekrar açılabilir. */
+.workspace-guide-modal .modal-content {
+  border-radius: 1rem;
+}
+
+.workspace-guide-steps {
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+}
+
+.workspace-guide-step {
+  display: flex;
+  gap: 0.85rem;
+  align-items: flex-start;
+  padding: 0.85rem 1rem;
+  border: 1px solid rgba(15, 61, 76, 0.08);
+  border-radius: 0.75rem;
+  background: #f8fafb;
+}
+
+.workspace-guide-step__num {
+  flex: 0 0 auto;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 1.75rem;
+  height: 1.75rem;
+  border-radius: 50%;
+  background: var(--app-accent, #0f3d4c);
+  color: #fff;
+  font-size: 0.85rem;
+  font-weight: 700;
+}
+
+.workspace-guide-fn-list {
+  padding-left: 1.1rem;
+  margin-bottom: 0;
+}
+
+.workspace-guide-fn-list li + li {
+  margin-top: 0.25rem;
 }

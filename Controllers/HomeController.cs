@@ -5,13 +5,15 @@ using pdf_bitirme.Models;
 namespace pdf_bitirme.Controllers;
 
 /*
- * [TR] Bu dosya ne işe yarar: Genel MVC denetleyicisi — ana sayfa, gizlilik, hata sayfası.
- * [TR] Neden gerekli: Varsayılon şablonun çekirdeği; Index artık bitirme tanıtımı gösterir.
- * [TR] İlgili: Views/Home/Index.cshtml, Privacy.cshtml, Shared/Error.cshtml
+ * [TR] Bu dosya ne işe yarar: Genel MVC denetleyicisi — ana sayfa, gizlilik, SSS, hata sayfası.
+ * [TR] Neden gerekli: Anonim ziyaretçiye landing (Views/Home/Index) ve statik bilgi sayfalarını sunar.
+ * [TR] İlgili: Views/Home/Index.cshtml, Privacy.cshtml, Faq.cshtml, Shared/Error.cshtml
  *
  * MODIFICATION NOTES (TR)
- * - App/Dashboard veya Document işlemleri için ayrı denetleyiciler eklenecek.
- * - Anonim erişim kısıtları Authorize attribute ile.
+ * - Index landing içeriği workspace AI, rehber, admin moderasyon ve notebook özelliklerini tanıtır.
+ * - Views/Home/Index.cshtml + site.css .home-* ile modern landing düzeni (hero, adımlar, özellik ızgarası).
+ * - Oturum açmış kullanıcıya Index.cshtml içinde Dashboard/Upload CTA gösterilir (controller değişikliği gerekmez).
+ * - App/Dashboard veya Document işlemleri ayrı denetleyicilerdedir.
  * - Zorluk: Kolay.
  */
 public class HomeController : Controller

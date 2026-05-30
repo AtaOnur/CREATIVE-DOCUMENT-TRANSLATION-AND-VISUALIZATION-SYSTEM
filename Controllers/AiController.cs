@@ -17,6 +17,7 @@ namespace pdf_bitirme.Controllers;
  * - Yeni task tipi eklemek: SupportedOps'a yeni değer eklenir.
  * - Yeni sağlayıcı: MultiProviderAiService'e yeni dal eklenir, bu dosyaya dokunulmaz.
  * - Genel image-to-text işlemi bu modülün kapsamında değildir.
+ * - Result: Admin rolünde GetAiResultPageByIdAsync ile başka kullanıcının sonucu salt okunur görüntülenir.
  * - Zorluk: Orta.
  *
  * JÜRI MODİFİKASYON NOTLARI (TR)
@@ -129,11 +130,14 @@ public class AiController : Controller
     [HttpGet]
     public async Task<IActionResult> Result(Guid id, CancellationToken cancellationToken)
     {
-        var email = User.Identity!.Name!;
-        var model = await _documentService.GetAiResultPageAsync(email, id, cancellationToken);
+        var isAdmin = User.IsInRole("Admin");
+        var model = isAdmin
+            ? await _documentService.GetAiResultPageByIdAsync(id, cancellationToken)
+            : await _documentService.GetAiResultPageAsync(User.Identity!.Name!, id, cancellationToken);
         if (model == null)
             return NotFound();
 
+        ViewBag.IsAdminModerationView = isAdmin;
         return View(model);
     }
 

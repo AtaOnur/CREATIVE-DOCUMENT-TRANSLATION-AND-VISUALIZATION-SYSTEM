@@ -21,6 +21,9 @@
  * - AI Sohbet (#ai-chat-window) sağ sidebar’ın üstünde; #region-page … #region-height üst toolbar’da (setRegionInfo).
  * - Seslendirme: chat içi ses balonu gösterilir; sunucu aynı çıktıyı dosya + AiResult olarak notebook'a kaydeder.
  * - Görsel sıkıştırma (JPEG kalite ayarı) büyük bölgeler için eklenebilir.
+ * - initWorkspaceGuide: ilk belgede 5 adımlı modal; #btn-workspace-help (Functions rayı) ile tekrar açılır.
+ * - buildFnRail: Help butonu son fonksiyonun altına eklenir; AI işlemi tetiklemez.
+ * - DismissWorkspaceGuide POST: rehber bir kez kapatılınca WorkspaceGuideCompleted kaydedilir.
  * - Zorluk: Orta.
  */
 import * as pdfjsLib from "/lib/pdfjs/pdf.min.mjs";
@@ -44,6 +47,9 @@ const defaultAiModel = shell.dataset.defaultAiModel || "mock-gpt";
 const defaultStyle = shell.dataset.defaultStyle || "Formal";
 const documentId = shell.dataset.documentId || "";
 let lastOcrResultId = shell.dataset.ocrResultId || "";
+const showWorkspaceGuide = shell.dataset.showWorkspaceGuide === "true";
+const dismissGuideUrl = shell.dataset.dismissGuideUrl || "";
+let workspaceGuideNeedsPersist = showWorkspaceGuide;
 
 const antiForgeryInput = document.querySelector('input[name="__RequestVerificationToken"]');
 const antiForgeryToken = antiForgeryInput ? antiForgeryInput.value : "";
@@ -1202,6 +1208,7 @@ function refreshComposeState({ pulse = false, justAdded = null } = {}) {
 
 // ─── CREATIVE: DİKEY FONKSİYON RAYI (görsel 3 tarzı) ─────────────────────────
 // [TR] AI_CHAT_OPERATION_DEFS'ten ikon + etiketli dikey butonlar üretir.
+// [TR] Son satır: #btn-workspace-help — workspace kullanım rehberini modal ile açar.
 function buildFnRail() {
   if (!fnRail) return;
   const header = '<div class="workspace-fn-rail__title" aria-hidden="true">Functions</div>';
@@ -1214,6 +1221,10 @@ function buildFnRail() {
         `<span class="workspace-fn-btn__label">${escapeHtml(d.label)}</span>` +
         "</button>"
     ).join("") +
+    '<button type="button" class="workspace-fn-btn workspace-help-btn" id="btn-workspace-help" title="How to use the workspace" aria-label="Open workspace guide">' +
+    '<span class="workspace-fn-btn__icon" aria-hidden="true">?</span>' +
+    '<span class="workspace-fn-btn__label">Help</span>' +
+    "</button>" +
     "</div>";
   const footer =
     '<div class="workspace-fn-rail__footer">' +
@@ -1269,6 +1280,7 @@ function positionResizerHint() {
 function updateFnRailEnabled() {
   if (!fnRail) return;
   fnRail.querySelectorAll(".workspace-fn-btn").forEach((btn) => {
+    if (btn.classList.contains("workspace-help-btn")) return;
     const def = AI_CHAT_OPERATION_DEFS.find((d) => d.op === btn.dataset.operation);
     btn.title = def?.label || "";
     btn.classList.toggle(
@@ -1323,6 +1335,7 @@ async function openFnFlyout(btn, operation) {
 if (fnRail) {
   buildFnRail();
   fnRail.addEventListener("click", (ev) => {
+    if (ev.target?.closest?.(".workspace-help-btn")) return;
     const btn = ev.target?.closest?.(".workspace-fn-btn");
     if (!btn) return;
     const operation = btn.dataset.operation || "";
@@ -3305,5 +3318,54 @@ window.addEventListener("resize", () => {
 attachShowMoreHandler();
 restoreAiChat();
 
+initWorkspaceGuide();
 init();
+
+// [TR] İlk belgede otomatik rehber modalı; Functions Help ile tekrar açılır.
+// [TR] DismissWorkspaceGuide ile user_settings.WorkspaceGuideCompleted güncellenir.
+function initWorkspaceGuide() {
+  const modalEl = document.getElementById("workspace-guide-modal");
+  const dismissBtn = document.getElementById("btn-workspace-guide-dismiss");
+  const helpBtn = document.getElementById("btn-workspace-help");
+  if (!modalEl || !dismissBtn || typeof bootstrap === "undefined") return;
+
+  let guideModal = null;
+
+  function openWorkspaceGuide({ firstTime = false } = {}) {
+    if (guideModal) guideModal.dispose();
+    guideModal = new bootstrap.Modal(modalEl, {
+      backdrop: firstTime ? "static" : true,
+      keyboard: !firstTime,
+    });
+    guideModal.show();
+  }
+
+  async function persistGuideDismissalIfNeeded() {
+    if (!workspaceGuideNeedsPersist || !dismissGuideUrl) return;
+    workspaceGuideNeedsPersist = false;
+    try {
+      await fetch(dismissGuideUrl, {
+        method: "POST",
+        headers: {
+          RequestVerificationToken: antiForgeryToken,
+        },
+      });
+    } catch (err) {
+      console.warn("Could not persist workspace guide dismissal.", err);
+      workspaceGuideNeedsPersist = true;
+    }
+  }
+
+  modalEl.addEventListener("hidden.bs.modal", () => {
+    persistGuideDismissalIfNeeded();
+  });
+
+  helpBtn?.addEventListener("click", () => {
+    openWorkspaceGuide({ firstTime: false });
+  });
+
+  if (showWorkspaceGuide) {
+    openWorkspaceGuide({ firstTime: true });
+  }
+}
 

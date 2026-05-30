@@ -8,6 +8,7 @@ namespace pdf_bitirme.Models.Entities;
  * MODIFICATION NOTES (TR)
  * - Bildirim ayarları ve çok dilli arayüz seçenekleri eklenebilir.
  * - API key ve gelişmiş admin ayarları eklenebilir.
+ * - WorkspaceGuideCompleted: ilk belge workspace rehberi kapatılınca true olur; tekrar otomatik açılmaz.
  * - Genel resim OCR desteği bu sürümde yer almamaktadır.
  * - Zorluk: Kolay.
  */
@@ -18,6 +19,7 @@ public class UserSettings
     public string DefaultAiModel { get; set; } = "mock-gpt";
     public string DefaultTranslationStyle { get; set; } = "Formal";
     public string ThemePreference { get; set; } = "System";
+    public bool WorkspaceGuideCompleted { get; set; }
     public DateTime UpdatedAtUtc { get; set; }
 }
 

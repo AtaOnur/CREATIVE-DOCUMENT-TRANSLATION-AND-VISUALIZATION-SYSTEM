@@ -1,142 +1,222 @@
 @*
-    [TR] Bu dosya ne işe yarar: Genel karşılama sayfası — proje tanıtımı, özellik kartları, gelecek çalışmalar notu.
-    [TR] Neden gerekli: Savunmada sistemin kapsamını tek ekranda özetler; varsayılan MVC şablonunun yerini alır.
-    [TR] İlgili: _Layout.cshtml (menü ve CTA bağlantıları tutarlı olmalı).
+    [TR] Bu dosya ne işe yarar: Genel karşılama (landing) sayfası — proje tanıtımı, özellik kartları, iş akışı özeti, kapsam dışı notu.
+    [TR] Neden gerekli: Savunmada sistemin güncel kapsamını tek ekranda özetler; anonim ziyaretçiye CTA, oturum açmış kullanıcıya pano/yükleme yönlendirmesi sunar.
+    [TR] İlgili: HomeController.Index, _Layout.cshtml, site.css (.home-*), Dashboard/Documents/Admin modülleri
 
     MODIFICATION NOTES (TR)
-    - Giriş yapan kullanıcıya /App veya pano yönlendirmesi eklenebilir.
-    - İstatistik veya demo video alanı savunma için genişletilebilir.
-    - OCR yalnızca PDF üzerinde seçilen bölge ile sınırlıdır; genel görüntü OCR aşağıda future work olarak belirtilmiştir.
+    - Modern landing düzeni: hero glow, güven rozetleri, adım zaman çizelgesi, ikonlu özellik ızgarası.
+    - "How it works" workspace rehberi ile aynı 5 adım + Help hatırlatması.
+    - Oturum durumuna göre CTA: Dashboard / Upload PDF veya Login / Register.
+    - Mimari akış ve "future work" kutusu landing'den kaldırıldı (daha sade ana sayfa); detay FAQ'da kalabilir.
+    - OCR yalnızca PDF içi seçili bölge; genel görüntü OCR kapsam dışı.
     - Zorluk: Kolay.
 *@
 @{
     ViewData["Title"] = "Home";
+    var isSignedIn = User.Identity?.IsAuthenticated ?? false;
 }
 
-<section class="app-hero text-white">
-    <div class="container py-5 py-md-6">
-        <div class="row align-items-center g-4">
-            <div class="col-lg-7">
-                <p class="text-uppercase small fw-semibold opacity-75 letter-spacing mb-2">Graduation Project</p>
-                <h1 class="display-5 fw-bold mb-3">Creative Document Translation and Visualisation System</h1>
-                <p class="lead opacity-90 mb-4">
-                    Upload academic and professional PDF documents, select a <strong>region</strong> on the page, extract text,
-                    translate, summarize, and visualize it in one consistent workflow.
-                </p>
-                <div class="d-flex flex-wrap gap-2">
-                    <a class="btn btn-outline-light btn-lg px-4" asp-controller="Account" asp-action="Login">Login</a>
-                    <a class="btn btn-outline-light btn-lg px-4" asp-controller="Account" asp-action="Register">Create Account</a>
+<div class="home-landing">
+    <section class="home-hero text-white position-relative overflow-hidden">
+        <div class="home-hero__glow home-hero__glow--one" aria-hidden="true"></div>
+        <div class="home-hero__glow home-hero__glow--two" aria-hidden="true"></div>
+        <div class="container position-relative py-5 py-lg-6">
+            <div class="row align-items-center g-5">
+                <div class="col-lg-7">
+                    <span class="home-eyebrow">Graduation Project · CreativeDoc</span>
+                    <h1 class="home-hero__title display-5 fw-bold mb-3">
+                        Translate, analyze, and visualize PDF content — one workspace.
+                    </h1>
+                    <p class="home-hero__lead mb-4">
+                        Select any region on your document, extract text or capture an image, then run AI tools from a built-in chat panel. Simple steps, clear results.
+                    </p>
+                    <div class="d-flex flex-wrap gap-2 mb-4">
+                        @if (isSignedIn)
+                        {
+                            <a class="btn btn-accent btn-lg px-4 shadow-sm" asp-controller="Dashboard" asp-action="Index">Open Dashboard</a>
+                            <a class="btn btn-outline-light btn-lg px-4" asp-controller="Documents" asp-action="Upload">Upload PDF</a>
+                        }
+                        else
+                        {
+                            <a class="btn btn-accent btn-lg px-4 shadow-sm" asp-controller="Account" asp-action="Register">Get started free</a>
+                            <a class="btn btn-outline-light btn-lg px-4" asp-controller="Account" asp-action="Login">Sign in</a>
+                        }
+                    </div>
+                    <div class="d-flex flex-wrap gap-2 home-trust-pills">
+                        <span class="home-trust-pill">📄 PDF-first workflow</span>
+                        <span class="home-trust-pill">🔤 Region OCR only</span>
+                        <span class="home-trust-pill">💬 AI chat workspace</span>
+                    </div>
                 </div>
-            </div>
-            <div class="col-lg-5">
-                <div class="app-hero-card rounded-4 p-4 text-dark shadow">
-                    <h2 class="h5 fw-semibold mb-3">What does this system offer?</h2>
-                    <ul class="list-unstyled mb-0 small lh-lg">
-                        <li class="mb-2"><span class="text-accent me-2">&#10003;</span> PDF upload and page-level workspace</li>
-                        <li class="mb-2"><span class="text-accent me-2">&#10003;</span> Rectangular region selection and coordinate storage</li>
-                        <li class="mb-2"><span class="text-accent me-2">&#10003;</span> OCR over the <strong>selected PDF region only</strong></li>
-                        <li class="mb-2"><span class="text-accent me-2">&#10003;</span> Translation, summarization, and rewrite workflows</li>
-                        <li class="mb-2"><span class="text-accent me-2">&#10003;</span> Text visualization and notebook/history</li>
-                        <li><span class="text-accent me-2">&#10003;</span> Extensible service and provider layer</li>
-                    </ul>
+                <div class="col-lg-5">
+                    <div class="home-hero-panel rounded-4 p-4 p-lg-5">
+                        <p class="home-hero-panel__label mb-2">At a glance</p>
+                        <h2 class="h5 fw-bold mb-3">Everything in one place</h2>
+                        <ul class="home-checklist list-unstyled mb-0">
+                            <li><span class="home-checklist__icon" aria-hidden="true">✓</span> Page viewer with drag-to-select regions</li>
+                            <li><span class="home-checklist__icon" aria-hidden="true">✓</span> Paddle or Tesseract OCR on your selection</li>
+                            <li><span class="home-checklist__icon" aria-hidden="true">✓</span> Image capture for multimodal AI tasks</li>
+                            <li><span class="home-checklist__icon" aria-hidden="true">✓</span> Functions menu: Translate, Summarize, Visualize, Narrate…</li>
+                            <li><span class="home-checklist__icon" aria-hidden="true">✓</span> Notebook history &amp; detailed result pages</li>
+                            <li><span class="home-checklist__icon" aria-hidden="true">✓</span> Built-in guide + <strong>Help (?)</strong> anytime</li>
+                        </ul>
+                    </div>
                 </div>
             </div>
         </div>
+    </section>
+
+    <div class="container home-body py-5">
+        <section class="home-section mb-5 pb-2">
+            <div class="row align-items-center g-4">
+                <div class="col-lg-5">
+                    <span class="home-eyebrow home-eyebrow--dark">Why CreativeDoc</span>
+                    <h2 class="home-section__title h2 fw-bold mb-3">Focus on what matters in your PDF</h2>
+                    <p class="text-muted mb-0">
+                        Instead of processing entire files, you choose the exact paragraph, figure, or table you care about.
+                        Edit OCR text, pick an AI function, and keep every result in chat and your notebook.
+                    </p>
+                </div>
+                <div class="col-lg-7">
+                    <div class="row g-3">
+                        <div class="col-sm-6">
+                            <div class="home-stat-tile">
+                                <span class="home-stat-tile__emoji" aria-hidden="true">🎯</span>
+                                <strong>Precise selection</strong>
+                                <span class="small text-muted">Normalized coordinates, zoom-aware</span>
+                            </div>
+                        </div>
+                        <div class="col-sm-6">
+                            <div class="home-stat-tile">
+                                <span class="home-stat-tile__emoji" aria-hidden="true">⚡</span>
+                                <strong>Fast AI loop</strong>
+                                <span class="small text-muted">Select → Run → chat result</span>
+                            </div>
+                        </div>
+                        <div class="col-sm-6">
+                            <div class="home-stat-tile">
+                                <span class="home-stat-tile__emoji" aria-hidden="true">🛡️</span>
+                                <strong>Admin ready</strong>
+                                <span class="small text-muted">Moderation &amp; audit tools</span>
+                            </div>
+                        </div>
+                        <div class="col-sm-6">
+                            <div class="home-stat-tile">
+                                <span class="home-stat-tile__emoji" aria-hidden="true">🔌</span>
+                                <strong>Swappable providers</strong>
+                                <span class="small text-muted">Gemini, Hugging Face, mock</span>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </section>
+
+        <section class="home-section mb-5">
+            <div class="text-center mb-4 mb-lg-5">
+                <span class="home-eyebrow home-eyebrow--dark">How it works</span>
+                <h2 class="home-section__title h2 fw-bold mb-2">Five steps to your first result</h2>
+                <p class="text-muted mb-0 mx-auto home-section__subtitle">Same flow as the in-app workspace guide — easy to follow even if you're new.</p>
+            </div>
+            <div class="home-steps">
+                <article class="home-step">
+                    <div class="home-step__num">1</div>
+                    <div class="home-step__body">
+                        <h3 class="h6 fw-bold mb-1">Select a region</h3>
+                        <p class="small text-muted mb-0">Drag on the PDF to highlight the area you want.</p>
+                    </div>
+                </article>
+                <article class="home-step">
+                    <div class="home-step__num">2</div>
+                    <div class="home-step__body">
+                        <h3 class="h6 fw-bold mb-1">Text or image</h3>
+                        <p class="small text-muted mb-0">Extract with OCR or capture the selection as an image.</p>
+                    </div>
+                </article>
+                <article class="home-step">
+                    <div class="home-step__num">3</div>
+                    <div class="home-step__body">
+                        <h3 class="h6 fw-bold mb-1">Edit if needed</h3>
+                        <p class="small text-muted mb-0">Fix OCR text in the panel before sending to AI.</p>
+                    </div>
+                </article>
+                <article class="home-step home-step--highlight">
+                    <div class="home-step__num">4</div>
+                    <div class="home-step__body">
+                        <h3 class="h6 fw-bold mb-1">Pick a function</h3>
+                        <p class="small text-muted mb-0">Translate, Summarize, Explain, Visualize, Math, Narrate…</p>
+                    </div>
+                </article>
+                <article class="home-step home-step--highlight">
+                    <div class="home-step__num">5</div>
+                    <div class="home-step__body">
+                        <h3 class="h6 fw-bold mb-1">Run &amp; review</h3>
+                        <p class="small text-muted mb-0">Choose options, press Run — see output in chat.</p>
+                    </div>
+                </article>
+                <article class="home-step home-step--help">
+                    <div class="home-step__num home-step__num--muted">?</div>
+                    <div class="home-step__body">
+                        <h3 class="h6 fw-bold mb-1">Need help later?</h3>
+                        <p class="small text-muted mb-0">Tap <strong>Help</strong> under the Functions column anytime.</p>
+                    </div>
+                </article>
+            </div>
+        </section>
+
+        <section class="home-section mb-5">
+            <div class="text-center mb-4 mb-lg-5">
+                <span class="home-eyebrow home-eyebrow--dark">Features</span>
+                <h2 class="home-section__title h2 fw-bold mb-2">Built for real document workflows</h2>
+            </div>
+            <div class="row g-4">
+                @{
+                    var features = new (string Icon, string Title, string Text)[]
+                    {
+                        ("📑", "PDF Workspace", "Upload, preview pages, zoom, and select regions with live toolbar metrics."),
+                        ("🔤", "Region OCR", "OCR on the selected area only — Paddle or Tesseract from the popup menu."),
+                        ("💬", "AI Chat", "Per-document chat history with operation chips and voice messages."),
+                        ("🖼️", "Multimodal", "Send cropped images to Explain, Visualize, and vision-capable models."),
+                        ("🔊", "Narration", "Gemini TTS turns text into audio saved in chat and notebook."),
+                        ("📓", "Notebook", "Searchable saved outputs with full parameter details."),
+                        ("❓", "Smart guide", "First-document onboarding modal; reopen from Help on Functions."),
+                        ("🛡️", "Moderation", "Admin tools for users, documents, chat, and AI results."),
+                        ("⚙️", "Extensible", "Provider layer swap via configuration — no UI rewrite."),
+                    };
+                }
+                @foreach (var f in features)
+                {
+                    <div class="col-md-6 col-lg-4">
+                        <div class="home-feature-card h-100">
+                            <span class="home-feature-card__icon" aria-hidden="true">@f.Icon</span>
+                            <h3 class="h6 fw-bold mb-2">@f.Title</h3>
+                            <p class="small text-muted mb-0">@f.Text</p>
+                        </div>
+                    </div>
+                }
+            </div>
+        </section>
+
+        <section class="home-cta rounded-4 text-center p-4 p-lg-5 mb-2">
+            <h2 class="h3 fw-bold mb-2">Ready to try it?</h2>
+            @if (isSignedIn)
+            {
+                <p class="text-muted mb-4">Upload a PDF and open the workspace — the guide will walk you through step one.</p>
+                <div class="d-flex flex-wrap justify-content-center gap-2">
+                    <a class="btn btn-accent btn-lg px-4" asp-controller="Documents" asp-action="Upload">Upload PDF</a>
+                    <a class="btn btn-outline-secondary btn-lg px-4" asp-controller="Dashboard" asp-action="Index">Dashboard</a>
+                    <a class="btn btn-link link-app btn-lg" asp-controller="Home" asp-action="Faq">Read FAQ</a>
+                </div>
+            }
+            else
+            {
+                <p class="text-muted mb-4">Create a free account, upload a document, and follow the built-in guide on your first workspace.</p>
+                <div class="d-flex flex-wrap justify-content-center gap-2">
+                    <a class="btn btn-accent btn-lg px-4" asp-controller="Account" asp-action="Register">Create account</a>
+                    <a class="btn btn-outline-secondary btn-lg px-4" asp-controller="Account" asp-action="Login">Sign in</a>
+                    <a class="btn btn-link link-app btn-lg" asp-controller="Home" asp-action="Faq">Read FAQ</a>
+                </div>
+            }
+        </section>
     </div>
-</section>
-
-<div class="container py-5">
-    <section class="mb-5">
-        <h2 class="h3 fw-bold mb-3">Project Overview</h2>
-        <p class="text-muted lead fs-65 mb-0">
-            The goal is to let users control the workflow by selecting <em>meaningful parts</em> inside a PDF document.
-            The OCR engine is scoped to that selection to reduce noise and provide a better academic workflow.
-            Translation, summarization, and rewriting run on the extracted text, and outputs can be visualized and stored in the notebook.
-        </p>
-    </section>
-
-    <section class="mb-5">
-        <h2 class="h3 fw-bold mb-4 text-center">Features</h2>
-        <div class="row g-4">
-            <div class="col-md-6 col-lg-4">
-                <div class="card app-card h-100 border-0 shadow-sm">
-                    <div class="card-body">
-                        <h3 class="h6 fw-semibold">PDF Upload</h3>
-                        <p class="small text-muted mb-0">Documents are imported into the system; page and metadata management can be expanded later.</p>
-                    </div>
-                </div>
-            </div>
-            <div class="col-md-6 col-lg-4">
-                <div class="card app-card h-100 border-0 shadow-sm">
-                    <div class="card-body">
-                        <h3 class="h6 fw-semibold">Region Selection</h3>
-                        <p class="small text-muted mb-0">Users mark a rectangular region on the page and normalized coordinates are stored.</p>
-                    </div>
-                </div>
-            </div>
-            <div class="col-md-6 col-lg-4">
-                <div class="card app-card h-100 border-0 shadow-sm border-start border-accent border-3">
-                    <div class="card-body">
-                        <h3 class="h6 fw-semibold">OCR (PDF Region)</h3>
-                        <p class="small text-muted mb-0">Text extraction is defined <strong>only</strong> for the selected PDF area; standalone image upload is outside this scope.</p>
-                    </div>
-                </div>
-            </div>
-            <div class="col-md-6 col-lg-4">
-                <div class="card app-card h-100 border-0 shadow-sm">
-                    <div class="card-body">
-                        <h3 class="h6 fw-semibold">Translation and Summary</h3>
-                        <p class="small text-muted mb-0">Multilingual translation and summary generation run on OCR or edited text.</p>
-                    </div>
-                </div>
-            </div>
-            <div class="col-md-6 col-lg-4">
-                <div class="card app-card h-100 border-0 shadow-sm">
-                    <div class="card-body">
-                        <h3 class="h6 fw-semibold">Rewrite</h3>
-                        <p class="small text-muted mb-0">Text can be rewritten according to style and target audience.</p>
-                    </div>
-                </div>
-            </div>
-            <div class="col-md-6 col-lg-4">
-                <div class="card app-card h-100 border-0 shadow-sm">
-                    <div class="card-body">
-                        <h3 class="h6 fw-semibold">Visualization and Notebook</h3>
-                        <p class="small text-muted mb-0">Text analysis outputs can be supported with visuals or structured views, and history is retained.</p>
-                    </div>
-                </div>
-            </div>
-        </div>
-    </section>
-
-    <section class="mb-5">
-        <h2 class="h3 fw-bold mb-3">Architecture Approach</h2>
-        <p class="text-muted mb-3">
-            The application layers are kept simple: web UI (ASP.NET Core MVC), business services, and thin adapters for external OCR/AI providers.
-            This makes it possible to swap or run Tesseract, cloud APIs, or different translation engines side by side.
-        </p>
-        <div class="rounded-3 bg-light border p-4 small font-monospace text-secondary mb-0">
-            Presentation -> Business logic -> Document/OCR interface -> Text processing (translation/summary/rewrite) -> Visualization & notebook
-        </div>
-    </section>
-
-    <section class="mb-4">
-        <div class="alert alert-secondary border-0 rounded-3 shadow-sm d-flex flex-column flex-md-row align-items-md-center gap-3" role="note">
-            <div class="fs-4 text-secondary" aria-hidden="true">&#9432;</div>
-            <div>
-                <strong>Out of scope (future work).</strong>
-                General image-to-text extraction (random photos or standalone image OCR) is <em>not included in this version</em>.
-                The system focuses on OCR over <strong>regions selected by the user inside a PDF</strong>.
-            </div>
-        </div>
-    </section>
-
-    <section class="text-center py-4 rounded-4 app-cta-band">
-        <h2 class="h4 fw-bold mb-2">Get Started</h2>
-        <p class="text-muted mb-3">Open the dashboard or upload a document to begin processing.</p>
-        <div class="d-flex flex-wrap justify-content-center gap-2">
-            <a class="btn btn-accent btn-lg px-4" asp-controller="Account" asp-action="Login">Login</a>
-            <a class="btn btn-outline-secondary btn-lg px-4" asp-controller="Account" asp-action="Register">Register</a>
-        </div>
-    </section>
 </div>

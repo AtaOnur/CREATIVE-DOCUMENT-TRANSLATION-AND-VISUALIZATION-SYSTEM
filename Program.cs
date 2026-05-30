@@ -10,6 +10,7 @@
  * - Ocr:UseMock=false ile TesseractCliOcrService aktif edilebilir.
  * - AddAntiforgery HeaderName: workspace fetch (OCR kaydetme, AI işlem, OCR seslendirme) için anti-CSRF token üstbilgide doğrulanır.
  * - Gemini TTS OCR metni seslendirme: AddHttpClient + IGeminiTtsSpeechService (Ai:Gemini:ApiKey paylaşılır).
+ * - user_settings.WorkspaceGuideCompleted: ilk workspace rehberi tamamlandı bayrağı (EnsureColumn).
  * - Zorluk: Kolay–orta.
  */
 
@@ -202,6 +203,7 @@ using (var scope = app.Services.CreateScope())
     EnsureColumn(db, "documents", "IsBanned", "ALTER TABLE documents ADD COLUMN IsBanned INTEGER NOT NULL DEFAULT 0;");
     EnsureColumn(db, "documents", "BanReason", "ALTER TABLE documents ADD COLUMN BanReason TEXT NOT NULL DEFAULT '';");
     EnsureColumn(db, "documents", "BannedAtUtc", "ALTER TABLE documents ADD COLUMN BannedAtUtc TEXT NULL;");
+    EnsureColumn(db, "user_settings", "WorkspaceGuideCompleted", "ALTER TABLE user_settings ADD COLUMN WorkspaceGuideCompleted INTEGER NOT NULL DEFAULT 0;");
     db.Database.ExecuteSqlRaw(
         """
         CREATE TABLE IF NOT EXISTS chat_messages (

@@ -12,6 +12,9 @@ namespace pdf_bitirme.Services;
  * - Bulut depoya delegasyon (S3, Blob).
  * - Arka plan kuyruğu ile durum geçişleri (Hangfire / Azure Queue).
  * - Çoklu dosya yükleme desteği.
+ * - GetOwnerDocumentAccessAsync: banlı belge / sahip kontrolü (Details + Banned view).
+ * - GetAiResultPageByIdAsync: Admin rolü için sahiplik filtresi olmadan AI sonucu okuma.
+ * - MarkWorkspaceGuideCompletedAsync: workspace rehberi bir kez kapatılınca kalıcı işaretler.
  * - Zorluk: Orta.
  */
 public interface IDocumentService
@@ -25,6 +28,11 @@ public interface IDocumentService
         CancellationToken cancellationToken = default);
 
     Task<DocumentDetailsViewModel?> GetDetailsAsync(string userEmail, Guid id, CancellationToken cancellationToken = default);
+
+    Task<OwnerDocumentAccessResult> GetOwnerDocumentAccessAsync(
+        string userEmail,
+        Guid id,
+        CancellationToken cancellationToken = default);
 
     Task<DocumentWorkspaceViewModel?> GetWorkspaceAsync(string userEmail, Guid id, CancellationToken cancellationToken = default);
 
@@ -71,6 +79,10 @@ public interface IDocumentService
         Guid aiResultId,
         CancellationToken cancellationToken = default);
 
+    Task<AiResultPageViewModel?> GetAiResultPageByIdAsync(
+        Guid aiResultId,
+        CancellationToken cancellationToken = default);
+
     Task<(bool Ok, string? ErrorMessage)> MarkAiResultSavedAsync(
         string userEmail,
         Guid aiResultId,
@@ -114,6 +126,8 @@ public interface IDocumentService
         SettingsViewModel model,
         CancellationToken cancellationToken = default);
 
+    Task MarkWorkspaceGuideCompletedAsync(string userEmail, CancellationToken cancellationToken = default);
+
     Task<(bool Ok, string? ErrorMessage)> UploadAsync(
         string userEmail,
         IFormFile file,
@@ -131,6 +145,7 @@ public interface IDocumentService
  * MODIFICATION NOTES (TR)
  * - İleride OCR pipeline eklendiğinde ExtractTextFromRegion(...) imzası eklenebilir.
  * - Çoklu bölge DTO’su ayrı bir modelle taşınabilir.
+ * - GetOwnerDocumentAccessAsync / GetAiResultPageByIdAsync / MarkWorkspaceGuideCompletedAsync eklendi.
  * - Genel resimden metin çıkarma özelliği bu sürümde bulunmamaktadır; future work olarak düşünülmüştür.
  * -----------------------------------------------------------------------------
  */

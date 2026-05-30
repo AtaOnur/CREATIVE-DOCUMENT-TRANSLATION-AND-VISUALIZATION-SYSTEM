@@ -22,6 +22,9 @@ namespace pdf_bitirme.Services;
  * - Belge önizleme görüntüsü (thumbnail) üretimi.
  * - Belge durumlari OCR_READY / AI_READY / COMPLETED akisinda guncellenir.
  * - OCR yalnızca PDF içi seçili bölge; genel görüntü OCR future work.
+ * - GetOwnerDocumentAccessAsync: banlı belgeye sahip kullanıcıya Banned view yönlendirmesi için.
+ * - GetAiResultPageByIdAsync: Admin panel Open Result bağlantısı (sahiplik filtresi yok).
+ * - ShowWorkspaceGuide: ilk yüklenen belge + WorkspaceGuideCompleted=false ise true.
  * - Genel image-to-text işlemi bu modülün kapsamında değildir.
  * - Zorluk: Yüksek (üretim güvenliği ve ölçek).
  */
@@ -136,6 +139,34 @@ public class DocumentService : IDocumentService
         };
     }
 
+    public async Task<OwnerDocumentAccessResult> GetOwnerDocumentAccessAsync(
+        string userEmail,
+        Guid id,
+        CancellationToken cancellationToken = default)
+    {
+        userEmail = userEmail.Trim();
+        var d = await _db.Documents.AsNoTracking()
+            .FirstOrDefaultAsync(x => x.Id == id && x.OwnerEmail == userEmail, cancellationToken);
+        if (d == null)
+            return new OwnerDocumentAccessResult { Status = OwnerDocumentAccessStatus.NotFound };
+
+        if (d.IsBanned)
+        {
+            return new OwnerDocumentAccessResult
+            {
+                Status = OwnerDocumentAccessStatus.Banned,
+                Title = d.Title,
+                BanReason = d.BanReason ?? string.Empty,
+            };
+        }
+
+        return new OwnerDocumentAccessResult
+        {
+            Status = OwnerDocumentAccessStatus.Allowed,
+            Title = d.Title,
+        };
+    }
+
     public async Task<DocumentWorkspaceViewModel?> GetWorkspaceAsync(string userEmail, Guid id, CancellationToken cancellationToken = default)
     {
         userEmail = userEmail.Trim();
@@ -161,6 +192,13 @@ public class DocumentService : IDocumentService
         var selectedModel = !string.IsNullOrWhiteSpace(mostUsedModel)
             ? mostUsedModel
             : (availableModels.Contains(settings?.DefaultAiModel ?? string.Empty) ? settings!.DefaultAiModel : availableModels.FirstOrDefault() ?? "mock-gpt");
+
+        var firstDocId = await _db.Documents.AsNoTracking()
+            .Where(x => x.OwnerEmail == userEmail && !x.IsBanned)
+            .OrderBy(x => x.CreatedAtUtc)
+            .Select(x => x.Id)
+            .FirstOrDefaultAsync(cancellationToken);
+        var guideCompleted = settings?.WorkspaceGuideCompleted ?? false;
 
         return new DocumentWorkspaceViewModel
         {
@@ -190,6 +228,7 @@ public class DocumentService : IDocumentService
             DefaultTranslationStyle = settings?.DefaultTranslationStyle ?? "Formal",
             ThemePreference = settings?.ThemePreference ?? "System",
             AvailableAiModels = availableModels,
+            ShowWorkspaceGuide = firstDocId == d.Id && !guideCompleted,
         };
     }
 
@@ -425,6 +464,39 @@ public class DocumentService : IDocumentService
         return data;
     }
 
+    public async Task<AiResultPageViewModel?> GetAiResultPageByIdAsync(
+        Guid aiResultId,
+        CancellationToken cancellationToken = default)
+    {
+        var data = await (
+            from a in _db.AiResults.AsNoTracking()
+            join d in _db.Documents.AsNoTracking() on a.DocumentId equals d.Id
+            where a.Id == aiResultId
+            select new AiResultPageViewModel
+            {
+                AiResultId = a.Id,
+                DocumentId = d.Id,
+                DocumentTitle = d.Title,
+                OperationType = a.OperationType,
+                ModelName = a.ModelName,
+                SourceLanguage = a.SourceLanguage,
+                TargetLanguage = a.TargetLanguage,
+                SourcePageNumber = a.SourcePageNumber,
+                Style = a.Style,
+                CustomInstruction = a.CustomInstruction,
+                InputText = a.InputText,
+                OutputText = a.OutputText,
+                OutputImageUrl = a.OutputImageUrl,
+                OutputAudioUrl = a.OutputAudioUrl,
+                OutputAudioContentType = a.OutputAudioContentType,
+                IsSaved = a.IsSaved,
+                UpdatedAtUtc = a.UpdatedAtUtc,
+            })
+            .FirstOrDefaultAsync(cancellationToken);
+
+        return data;
+    }
+
     public async Task<(bool Ok, string? ErrorMessage)> MarkAiResultSavedAsync(
         string userEmail,
         Guid aiResultId,
@@ -633,6 +705,31 @@ public class DocumentService : IDocumentService
         entity.UpdatedAtUtc = DateTime.UtcNow;
         await _db.SaveChangesAsync(cancellationToken);
         return (true, null);
+    }
+
+    public async Task MarkWorkspaceGuideCompletedAsync(string userEmail, CancellationToken cancellationToken = default)
+    {
+        userEmail = userEmail.Trim();
+        var entity = await _db.UserSettings
+            .FirstOrDefaultAsync(x => x.UserEmail == userEmail, cancellationToken);
+        if (entity == null)
+        {
+            entity = new UserSettings
+            {
+                Id = Guid.NewGuid(),
+                UserEmail = userEmail,
+                WorkspaceGuideCompleted = true,
+                UpdatedAtUtc = DateTime.UtcNow,
+            };
+            _db.UserSettings.Add(entity);
+        }
+        else
+        {
+            entity.WorkspaceGuideCompleted = true;
+            entity.UpdatedAtUtc = DateTime.UtcNow;
+        }
+
+        await _db.SaveChangesAsync(cancellationToken);
     }
 
     public async Task<(bool Ok, string? ErrorMessage)> UploadAsync(

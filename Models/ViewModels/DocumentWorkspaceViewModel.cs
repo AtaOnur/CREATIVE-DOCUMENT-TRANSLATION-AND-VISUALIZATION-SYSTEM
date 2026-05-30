@@ -11,6 +11,7 @@ namespace pdf_bitirme.Models.ViewModels;
  * - Gelişmiş viewer için rotate, fit-height ve thumbnail alanları eklenebilir.
  * - Text overlay ve annotation verileri bu modele taşınabilir.
  * - NarrateSpeechEndpointUrl: data-narrate-speech-url — OCR metninin Gemini TTS ile sese dönüştürülmesi.
+ * - ShowWorkspaceGuide: kullanıcının ilk yüklediği belgede workspace rehberi otomatik açılsın (bir kez).
  * - Genel resimden metin çıkarma özelliği bu sürümde bulunmamaktadır; future work olarak düşünülmüştür.
  * - Zorluk: Orta.
  */
@@ -45,4 +46,8 @@ public class DocumentWorkspaceViewModel
     public string DefaultTranslationStyle { get; set; } = "Formal";
     public string ThemePreference { get; set; } = "System";
     public List<string> AvailableAiModels { get; set; } = new();
+
+    /// <summary>True only for the user's first uploaded document until the onboarding guide is dismissed.</summary>
+    /// <remarks>[TR] DocumentService + user_settings.WorkspaceGuideCompleted ile birlikte kullanılır.</remarks>
+    public bool ShowWorkspaceGuide { get; set; }
 }
