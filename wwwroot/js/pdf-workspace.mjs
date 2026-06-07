@@ -107,6 +107,9 @@ const chatWindow = document.getElementById("ai-chat-window");
 const chatEmpty = document.getElementById("ai-chat-empty");
 const chatCount = document.getElementById("ai-chat-count");
 const btnClearChat = document.getElementById("btn-clear-chat");
+const CHAT_EMPTY_HTML =
+  "No messages yet. Hold down the mouse button on the PDF and drag to draw a region, " +
+  "then choose <strong>Extract text</strong> or <strong>Select as image</strong>.";
 let chatMessageCount = 0;
 
 // ─── CREATIVE: yüzen panel + fonksiyon rayı + bölge popup'ı ──────────────────
@@ -307,14 +310,42 @@ function clearAiStatus() {
 // - Uzun metin: kısaltma + "Devamını göster"; görseller base64 özetlenmez (büyük payload uyarısı).
 // - COLLAPSE_* eşikleri aşağıda sabit.
 
-function ensureChatVisible() {
-  if (chatEmpty && !chatEmpty.classList.contains("d-none")) {
-    chatEmpty.classList.add("d-none");
+function chatHasMessages() {
+  return !!chatWindow?.querySelector(".ai-chat-message");
+}
+
+function syncChatEmptyState() {
+  if (!chatWindow) return;
+  const hideEmpty = chatHasMessages();
+  chatWindow.querySelectorAll(".ai-chat-empty").forEach((el) => {
+    el.classList.toggle("d-none", hideEmpty);
+  });
+}
+
+function showChatEmptyPlaceholder() {
+  if (!chatWindow || chatHasMessages()) return;
+  let emptyEl = chatWindow.querySelector(".ai-chat-empty");
+  if (!emptyEl) {
+    emptyEl = document.createElement("div");
+    emptyEl.id = "ai-chat-empty";
+    emptyEl.className = "ai-chat-empty text-center text-muted small p-4";
+    emptyEl.innerHTML = CHAT_EMPTY_HTML;
+    chatWindow.appendChild(emptyEl);
+  } else {
+    emptyEl.classList.remove("d-none");
   }
 }
 
+function ensureChatVisible() {
+  syncChatEmptyState();
+}
+
 function updateChatCount() {
-  if (chatCount) chatCount.textContent = `${chatMessageCount} msj`;
+  if (chatWindow) {
+    chatMessageCount = chatWindow.querySelectorAll(".ai-chat-message").length;
+  }
+  if (chatCount) chatCount.textContent = `${chatMessageCount} msg`;
+  syncChatEmptyState();
 }
 
 function scrollChatToBottom() {
@@ -324,14 +355,9 @@ function scrollChatToBottom() {
 function removeChatMessage(msg) {
   if (!msg || !chatWindow) return;
   msg.remove();
-  chatMessageCount = chatWindow.querySelectorAll(".ai-chat-message").length;
   updateChatCount();
   persistAiChat();
-  if (chatMessageCount === 0 && chatEmpty) {
-    const clone = chatEmpty.cloneNode(true);
-    clone.classList.remove("d-none");
-    chatWindow.appendChild(clone);
-  }
+  showChatEmptyPlaceholder();
 }
 
 function upgradeLegacyChatErrors(root = chatWindow) {
@@ -611,7 +637,6 @@ function restoreAiChat() {
   chatWindow.querySelectorAll(".ai-chat-message[data-source-id]").forEach((el) => {
     if (el.dataset.sourceId) ensureSourceInMemory(el.dataset.sourceId);
   });
-  chatMessageCount = chatWindow.querySelectorAll(".ai-chat-message").length;
   updateChatCount();
   bindChatAudioPlayers();
   persistAiChat();
@@ -738,7 +763,6 @@ function appendUserMessage({ imageDataUrl, contentText, prompt, reactions, sourc
 
   wrap.innerHTML = inner.join("");
   chatWindow.appendChild(wrap);
-  chatMessageCount += 1;
   updateChatCount();
   attachShowMoreHandler();
   persistAiChat();
@@ -793,6 +817,7 @@ async function appendChatOperationSetup(sourceId, operation) {
       ${buildOpFormHtml(sourceId, operation, opLabel)}
     </div>`;
   chatWindow.appendChild(wrap);
+  updateChatCount();
   scrollChatToBottom();
 }
 
@@ -803,14 +828,14 @@ function buildOpFormHtml(sourceId, operation, opLabel) {
   const setupId = `chat-setup-${Date.now()}-${Math.random().toString(16).slice(2)}`;
   const isNarrate = operation === "Narrate";
   const langLabel = isNarrate
-    ? "Seslendirme dili"
+    ? "Narration language"
     : operation === "Translate"
-      ? "Hedef dil"
-      : "Cevap dili";
+      ? "Target language"
+      : "Response language";
   const styleField = isNarrate
     ? ""
     : `<label class="ai-chat-op-field">
-            <span>Stil</span>
+            <span>Style</span>
             <select class="form-select form-select-sm" data-field="style">
               <option value="Formal"${defaultStyle === "Formal" ? " selected" : ""}>Formal</option>
               <option value="Academic"${defaultStyle === "Academic" ? " selected" : ""}>Academic</option>
@@ -978,6 +1003,7 @@ function appendAiTypingPlaceholder(abortController = null) {
 
 // [TR] Bekleme balonunu gerçek AI cevabıyla değiştir veya yeni bir balon ekle.
 function replaceWithAiMessage(typingNode, { text, imageUrl, isError, resultUrl }) {
+  ensureChatVisible();
   const wrap = typingNode || (() => {
     const el = document.createElement("div");
     el.className = "ai-chat-message ai-chat-message--ai";
@@ -1016,7 +1042,6 @@ function replaceWithAiMessage(typingNode, { text, imageUrl, isError, resultUrl }
   parts.push("</div>"); // wrap
 
   wrap.innerHTML = parts.join("");
-  chatMessageCount += 1;
   updateChatCount();
   attachShowMoreHandler();
   persistAiChat();
@@ -1042,11 +1067,7 @@ if (btnClearChat) {
     chatWindow.innerHTML = "";
     chatMessageCount = 0;
     updateChatCount();
-    if (chatEmpty) {
-      const clone = chatEmpty.cloneNode(true);
-      clone.classList.remove("d-none");
-      chatWindow.appendChild(clone);
-    }
+    showChatEmptyPlaceholder();
     // [TR] Sohbet temizlenince yalnızca flyout'u kapat; compose kaynakları
     //      (extracted text / görsel) korunur ki kullanıcı onlar üzerinde işlemeye
     //      devam edebilsin.
@@ -1257,9 +1278,9 @@ function hasSendableSource() {
 
 function warnNoSource() {
   if (textSourceId || imageSourceId) {
-    setOcrStatus("error", "Gönderilecek kaynak seçilmedi. Yukarıdan metin veya görseli seçin.");
+    setOcrStatus("error", "No source selected. Choose text or image above.");
   } else {
-    setOcrStatus("error", "Gönderilecek bir şey bulunamadı. Önce PDF üzerinde bölge seçin.");
+    setOcrStatus("error", "Nothing to send yet. Select a region on the PDF first.");
   }
 }
 
@@ -2185,7 +2206,7 @@ if (btnSaveOcrText) {
   btnSaveOcrText.addEventListener("click", () => {
     if (!saveOcrUrl || !lastOcrResultId || !ocrTextarea) return;
     btnSaveOcrText.disabled = true;
-    setOcrStatus("info", "OCR metni kaydediliyor...", { loading: true });
+    setOcrStatus("info", "Saving OCR text...", { loading: true });
     fetch(saveOcrUrl, {
       method: "POST",
       headers: {
@@ -2214,7 +2235,7 @@ if (btnSaveOcrText) {
         updateAiChatSourceText(lastImageChatSourceId, savedText);
         updateFnRailEnabled();
         saveWsStateDebounced();
-        setOcrStatus("success", res.message || "OCR metni kaydedildi.");
+        setOcrStatus("success", res.message || "OCR text saved.");
         btnSaveOcrText.disabled = false;
       })
       .catch(() => {
@@ -2723,7 +2744,6 @@ function appendChatNarrationMessage(audioSource, sourceText, savedInfo = {}) {
 
   chatWindow.appendChild(wrap);
   wireVoiceMessagePlayer(wrap.querySelector(".ai-chat-voice-msg"));
-  chatMessageCount += 1;
   updateChatCount();
   persistAiChat();
   saveChatMessageToServer({
